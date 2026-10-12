@@ -22,6 +22,11 @@ my @GAPS = (
 
 my @HISTORY = ([ 5, '1-4' ], [ 20, '5-19' ], [ 100, '20-99' ]);
 
+# The verdicts that get a sighting held in quarantine.
+my %HELD = (suspect => 1, 'new host' => 1);
+
+sub held { $HELD{ $_[0]{verdict} // '' } }
+
 sub bucket {
     my ($value, $buckets, $last) = @_;
     for my $b (@$buckets) {
@@ -50,7 +55,7 @@ sub ident_relation {
 sub suspect_report {
     my ($data) = @_;
     my %r = (suspects => 0, nicks => 0, nicks_with_suspects => 0, owner_seen_after => 0,
-        by_change => {}, by_gap => {}, by_history => {}, by_outcome => {});
+        by_verdict => {}, by_change => {}, by_gap => {}, by_history => {}, by_outcome => {});
     my @per_nick;
 
     for my $p (values %{ $data->{users} }) {
@@ -60,11 +65,12 @@ sub suspect_report {
 
         for my $i (0 .. $#sightings) {
             my $s = $sightings[$i];
-            next unless ($s->{verdict} // '') eq 'suspect';
-            my @before = grep { !$_->{quarantined} && ($_->{verdict} // '') ne 'suspect' } @sightings[0 .. $i - 1];
+            next unless held($s);
+            my @before = grep { !$_->{quarantined} && !held($_) } @sightings[0 .. $i - 1];
             next unless @before;
             $count++;
 
+            $r{by_verdict}{ $s->{verdict} }++;
             $r{by_change}{ 'host ' . host_relation($s, \@before) . ', ident ' . ident_relation($s, \@before) }++;
             $r{by_gap}{ bucket($s->{time} - $before[-1]{time}, \@GAPS, 'a year or more') }++;
             $r{by_history}{ bucket(scalar @before, \@HISTORY, '100+') }++;
@@ -72,7 +78,7 @@ sub suspect_report {
 
             # Did the usual person turn up again afterwards? That points to an
             # impostor or a second person sharing the nick, rather than a move.
-            my @after = grep { !$_->{quarantined} && ($_->{verdict} // '') ne 'suspect' } @sightings[$i + 1 .. $#sightings];
+            my @after = grep { !$_->{quarantined} && !held($_) } @sightings[$i + 1 .. $#sightings];
             $r{owner_seen_after}++ if any { host_relation($_, \@before) ne 'new' } @after;
         }
         if ($count) {

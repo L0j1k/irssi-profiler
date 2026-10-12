@@ -7,7 +7,7 @@
 # usage: scripts/diagnose_suspects.pl FILE
 #   e.g. scripts/diagnose_suspects.pl build/profiler-data/efnet.json
 #
-# Each suspect sighting is compared with the accepted sightings of the same
+# Each held sighting (verdict suspect or new host) is compared with the accepted sightings of the same
 # nick that came before it: how the host and ident relate, how long since the
 # last accepted sighting, how much history there was, what became of it, and
 # whether the usual person turned up again later.
@@ -41,11 +41,12 @@ sub section {
     printf "  %8d  %s  %s\n", $counts->{$_}, pct($counts->{$_}), $_ for @keys;
 }
 
-printf "%d suspect sightings across %d of %d nicks\n", $r->{suspects}, $r->{nicks_with_suspects}, $r->{nicks};
+printf "%d held sightings (suspect or new host) across %d of %d nicks\n", $r->{suspects}, $r->{nicks_with_suspects}, $r->{nicks};
 printf "top 1%% of those nicks hold %s of suspects, top 10%% hold %s\n",
     pct($r->{concentration}{top_1_percent}), pct($r->{concentration}{top_10_percent});
 printf "the usual person turned up again afterwards for %d (%s)\n", $r->{owner_seen_after}, pct($r->{owner_seen_after});
 
+section('verdict', $r->{by_verdict});
 section('what changed, against the accepted history', $r->{by_change});
 section('time since the last accepted sighting', $r->{by_gap},
     ['under a day', 'under a week', 'under a month', 'under six months', 'under a year', 'a year or more']);

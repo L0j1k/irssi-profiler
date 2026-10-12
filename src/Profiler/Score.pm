@@ -57,6 +57,12 @@ our $CONSISTENT_AT = 0.25;
 our $PROMOTE_AFTER_SIGHTINGS = 5;
 our $PROMOTE_AFTER_DAYS = 7;
 
+# Someone "changes hosts often" when they have at least this many sightings
+# with the same ident, and at least a quarter as many different hosts as
+# sightings.
+our $HOST_CHANGES_MIN_SIGHTINGS = 5;
+our $HOST_CHANGES_OFTEN_AT = 0.25;
+
 my %PREFIX = (4 => 24, 6 => 64);
 
 sub familiarity {
@@ -184,13 +190,33 @@ sub judge {
                 : $match < $CONSISTENT_AT       ? 'mixed'
                 :                                 'consistent';
 
-    return {
+    # Most suspects on EFnet turned out to be the usual person on a host we
+    # hadn't seen, with everything else the same. That's worth telling apart
+    # from a stranger, so it gets its own verdict. It's still quarantined.
+    my %r = (
         match      => $match,
         confidence => $confidence,
         trust      => $confidence * $match,
         verdict    => $verdict,
         parts      => \%parts,
-    };
+    );
+    if ($verdict eq 'suspect' && ($parts{host} // 0) < 0 && !grep { $parts{$_} < 0 } grep { $_ ne 'host' } keys %parts) {
+        $r{verdict} = 'new host';
+        $r{host_changes_often} = host_changes_often($profile, $obs);
+    }
+    return \%r;
+}
+
+# Does this person turn up from new hosts a lot? We look at every sighting
+# of the nick with the same ident, quarantined or not, and count how many
+# different hosts they came from. VPNs and proxies that whois doesn't give
+# away look like this, as do people who hop between machines.
+sub host_changes_often {
+    my ($profile, $obs) = @_;
+    my @same_ident = grep { defined $_->{ident} && $_->{ident} eq $obs->{ident} } @{ $profile->{sightings} };
+    return 0 if @same_ident < $HOST_CHANGES_MIN_SIGHTINGS;
+    my %hosts = map { $_->{host} => 1 } @same_ident;
+    return keys(%hosts) / @same_ident >= $HOST_CHANGES_OFTEN_AT ? 1 : 0;
 }
 
 # Does a sighting agree with the accepted history on everything we compare

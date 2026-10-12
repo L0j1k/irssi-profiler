@@ -100,6 +100,13 @@ match`, and that's what the rules' `min_trust` is compared to. The verdict is:
   sighting is quarantined: kept, but left out of the history, so an
   impostor can't train the profile. The warning notes it if the join came
   during a netsplit rejoin.
+- **new host:** would be suspect, but only the host disagrees. Ident,
+  realname and client (whichever we have) all match. This is usually the real
+  person on another machine, a VPN or a proxy, so it gets a quiet line
+  instead of a warning, like `bob: new host ~bob@x.example, ident matches
+  (frequently changes hosts)`. The last part shows when the nick has used at
+  least a quarter as many hosts as sightings with that ident. It's
+  quarantined the same way as a suspect.
 - **mixed:** match from 0 to 0.25. Typical of the real person on a new ISP,
   or a careful impostor who copied everything except the host. The two
   can't be told apart.

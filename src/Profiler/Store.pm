@@ -89,7 +89,7 @@ sub record {
     $sighting{channel} = lc $sighting{channel} if defined $sighting{channel};
     $sighting{time} = $now;
     $sighting{verdict} = $verdict;
-    $sighting{quarantined} = $verdict eq 'suspect' ? 1 : 0;
+    $sighting{quarantined} = $verdict eq 'suspect' || $verdict eq 'new host' ? 1 : 0;
 
     $p->{nick} = $obs->{nick};
     $p->{last_seen} = $now;

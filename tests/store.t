@@ -69,9 +69,12 @@ subtest 'suspect sightings are quarantined until reviewed' => sub {
 
     is_deeply([ $store->suspects('efnet') ], [], 'nothing left to review');
     is($store->accept('efnet', 'nobody'), 0, 'unknown nick is a no-op');
+
+    $store->record('efnet', { %obs, host => 'elsewhere.example.org' }, 4000, 'new host');
+    ok($store->profile('efnet', 'bob')->{sightings}[-1]{quarantined}, 'a new host is quarantined too');
 };
 
-subtest 'someone who moved stops being suspect within about a week' => sub {
+subtest 'someone who moved stops being held within about a week' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);
     my ($t, %verdicts, @promoted) = (1_600_000_000);
@@ -84,11 +87,13 @@ subtest 'someone who moved stops being suspect within about a week' => sub {
         my $r = Profiler::Score::judge($store->profile('n', 'bob'), $obs, $now);
         $store->record('n', $obs, $now, $r->{verdict});
         if (my $n = $store->promote_if_moved('n', 'bob', $now, 5, 7)) { push @promoted, $n }
-        $verdicts{$r->{verdict}}++ if $d >= 100;
+        $verdicts{ $r->{verdict} }++ if $d >= 100;
     }
-    ok($verdicts{suspect} <= 8, "suspect for $verdicts{suspect} days after the move");
+    my $held = $verdicts{'new host'} // 0;
+    ok(!$verdicts{suspect}, 'a move with the same ident is never called suspect');
+    ok($held >= 5 && $held <= 8, "held as a new host for $held days after the move");
     is(scalar @promoted, 1, 'promoted once');
-    is($promoted[0], $verdicts{suspect}, 'every quarantined sighting promoted');
+    is($promoted[0], $held, 'every quarantined sighting promoted');
 
     my @s = grep { $_->{promoted} } @{ $store->profile('n', 'bob')->{sightings} };
     ok(!grep({ $_->{quarantined} || !$_->{reviewed} } @s), 'promoted sightings count and are marked reviewed');

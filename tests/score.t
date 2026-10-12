@@ -87,6 +87,29 @@ subtest 'a copycat matching everything but the host is not consistent' => sub {
     ok($copy->{trust} < $real->{trust} / 2, 'far below the real thing');
 };
 
+subtest 'a new host is called out separately when nothing else contradicts' => sub {
+    # Logs give only host, ident and channel, which is where this shows up.
+    my %logged = map { $_ => $bob{$_} } qw(host ip ident channel);
+    my $history = sub {
+        my (@hosts) = @_;
+        my $i = 0;
+        return { sightings => [ map { { %logged, host => $_, ip => '172.16.' . $i++ . '.1', time => $NOW } } @hosts ] };
+    };
+    my %elsewhere = (%logged, host => 'elsewhere.example.org', ip => '192.0.2.9');
+
+    my $r = judge($history->(('host.example.net') x 20), \%elsewhere);
+    is($r->{verdict}, 'new host', 'everything but the host matches');
+    ok(!$r->{host_changes_often}, 'from someone who sticks to one host');
+
+    is(judge($history->(('host.example.net') x 20), { %elsewhere, ident => 'lol' })->{verdict},
+        'suspect', 'a new ident as well is suspect');
+
+    my $hopper = $history->((('host.example.net') x 15), map { "hop$_.example.net" } 1 .. 5);
+    $r = judge($hopper, \%elsewhere);
+    is($r->{verdict}, 'new host', 'a host hopper on yet another host');
+    ok($r->{host_changes_often}, 'is noted as changing hosts often');
+};
+
 subtest 'contradicting an attribute that always varies costs little' => sub {
     my $varied = { sightings => [ map { { %bob, ident => "id$_", time => $NOW } } 1 .. 10 ] };
     my $stable = profile_of(10);

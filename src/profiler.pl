@@ -309,6 +309,15 @@ sub judge {
         $say->("SUSPECT $who doesn't match the history of $job->{nick}$when; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");
     }
+    # Same person by everything but the host, most likely. A quiet note
+    # rather than a warning, so SUSPECT keeps meaning something.
+    elsif ($r->{verdict} eq 'new host') {
+        my %label = (ident => 'ident', realname => 'realname', version => 'client');
+        my @same = map { $label{$_} } grep { ($r->{parts}{$_} // 0) > 0 } qw(ident realname version);
+        my $matches = @same ? join(', ', @same) . (@same == 1 ? ' matches' : ' match') : 'nothing else contradicts';
+        my $often = $r->{host_changes_often} ? ' (frequently changes hosts)' : '';
+        $say->("$job->{nick}: new host $job->{ident}\@$job->{host}, $matches$often; $seen");
+    }
     elsif ($r->{trust} < $min) {
         $say->("WARNING $who has $score, under $min; $seen$why");
     }

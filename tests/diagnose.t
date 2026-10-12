@@ -24,21 +24,26 @@ my $data = { users => {
     dave => { nick => 'dave', sightings => [ (map { ok_at($_) } 1 .. 3), sus_at(3.5, host => 'x.example', ident => 'lol') ] },
     # Nothing suspect.
     erin => { nick => 'erin', sightings => [ map { ok_at($_) } 1 .. 5 ] },
+    # Same ident from a new host, held as a new host rather than a suspect.
+    finn => { nick => 'finn', sightings => [ (map { ok_at($_) } 1 .. 5),
+        { %{ sus_at(5.5, host => 'elsewhere.example') }, verdict => 'new host' } ] },
 } };
 
 my $r = Profiler::Diagnose::suspect_report($data);
 
-is($r->{suspects}, 3, 'suspect sightings');
-is($r->{nicks_with_suspects}, 3, 'nicks with any');
-is($r->{nicks}, 4, 'nicks in total');
+is($r->{suspects}, 4, 'held sightings');
+is($r->{nicks_with_suspects}, 4, 'nicks with any');
+is($r->{nicks}, 5, 'nicks in total');
+is_deeply($r->{by_verdict}, { suspect => 3, 'new host' => 1 }, 'by verdict');
 is_deeply($r->{by_change}, {
     'host same, ident differs only by ~' => 1,
     'host near, ident new'               => 1,
     'host new, ident new'                => 1,
+    'host new, ident same'               => 1,
 }, 'what changed');
-is_deeply($r->{by_gap}, { 'under a day' => 2, 'a year or more' => 1 }, 'time since the last accepted sighting');
-is_deeply($r->{by_history}, { '1-4' => 1, '5-19' => 1, '20-99' => 1 }, 'accepted sightings before it');
-is_deeply($r->{by_outcome}, { promoted => 1, 'still quarantined' => 2 }, 'outcome');
+is_deeply($r->{by_gap}, { 'under a day' => 3, 'a year or more' => 1 }, 'time since the last accepted sighting');
+is_deeply($r->{by_history}, { '1-4' => 1, '5-19' => 2, '20-99' => 1 }, 'accepted sightings before it');
+is_deeply($r->{by_outcome}, { promoted => 1, 'still quarantined' => 3 }, 'outcome');
 is($r->{owner_seen_after}, 1, 'the usual person turned up again after one of them');
 is_deeply($r->{concentration}, { top_1_percent => 1, top_10_percent => 1 }, 'share held by the top nicks');
 

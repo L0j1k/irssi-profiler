@@ -89,7 +89,7 @@ $store->save($network);
 
 my $v = $stats->{verdicts};
 printf "replayed %d joins in %ds (%d quick rejoins skipped)\n", $stats->{joins}, time - $started, $stats->{repeats};
-printf "verdicts: %s\n", join(', ', map { "$_ " . ($v->{$_} // 0) } qw(unknown consistent mixed suspect));
+printf "verdicts: %s\n", join(', ', map { "$_ " . ($v->{$_} // 0) } ('unknown', 'consistent', 'mixed', 'new host', 'suspect'));
 printf "%d quarantined sighting(s) later promoted as moves\n", $stats->{promoted};
 if ($stats->{unparsed}) {
     print "$stats->{unparsed} join line(s) could not be parsed, for example:\n";
