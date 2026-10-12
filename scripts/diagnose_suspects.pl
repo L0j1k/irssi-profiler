@@ -5,7 +5,7 @@
 # and percentages only: no nicks, hosts or idents.
 #
 # usage: scripts/diagnose_suspects.pl FILE
-#   e.g. scripts/diagnose_suspects.pl build/profiler-data/efnet.json
+#   e.g. scripts/diagnose_suspects.pl build/profiler-data/efnet.sqlite
 #
 # Each held sighting (verdict suspect or new host) is compared with the accepted sightings of the same
 # nick that came before it: how the host and ident relate, how long since the
@@ -14,11 +14,12 @@
 use strict;
 use warnings;
 
+use File::Basename qw(fileparse);
 use FindBin;
-use JSON::XS;
 use lib "$FindBin::Bin/../src";
 
 use Profiler::Diagnose;
+use Profiler::Store;
 
 my ($path) = @ARGV;
 if (!$path || $path =~ /^-/) {
@@ -27,9 +28,10 @@ if (!$path || $path =~ /^-/) {
     exit 2;
 }
 
-open my $fh, '<', $path or die "cannot read $path: $!\n";
-my $data = eval { local $/; JSON::XS->new->decode(scalar <$fh>) } or die "cannot parse $path: $@";
-my $r = Profiler::Diagnose::suspect_report($data);
+my ($network, $dir) = fileparse($path, '.sqlite');
+die "$path should be a <network>.sqlite file\n" unless $path =~ /\.sqlite$/;
+die "no file at $path\n" unless -f $path;
+my $r = Profiler::Diagnose::suspect_report(Profiler::Store->new($dir)->all_profiles($network));
 
 my $total = $r->{suspects} || 1;
 sub pct { sprintf '%5.1f%%', 100 * $_[0] / $total }

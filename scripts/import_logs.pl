@@ -10,7 +10,7 @@
 #                     <year>/<month>/<year>-<month>-<day>-<target>.log
 #   --network         irssi server tag the data is for (default: the name of
 #                     the log directory, e.g. EFNet)
-#   --out             where to write <network>.json (default: build/profiler-data
+#   --out             where to write <network>.sqlite (default: build/profiler-data
 #                     in this repo). Refuses to overwrite an existing file, so a
 #                     second run can't count everything twice.
 #   --recheck         skip a rejoin of the same channel within this many
@@ -27,10 +27,10 @@
 # Progress goes to stderr, one line per month. Malformed join lines are counted
 # and the first few are shown at the end.
 #
-# Then install the result with the script unloaded, or irssi will save its
-# in-memory copy over it:
+# Then install the result with the script unloaded, since irssi keeps the
+# database open:
 #   /script unload profiler
-#   cp build/profiler-data/<network>.json ~/.irssi/scripts/profiler-data/
+#   cp build/profiler-data/<network>.sqlite ~/.irssi/scripts/profiler-data/
 #   /script load profiler
 use strict;
 use warnings;
@@ -85,7 +85,7 @@ my $stats = Profiler::Import::replay(
     promote_after_sightings => $opt{'promote-after-sightings'},
     promote_after_days      => $opt{'promote-after-days'},
 );
-$store->save($network);
+$store->close;
 
 my $v = $stats->{verdicts};
 printf "replayed %d joins in %ds (%d quick rejoins skipped)\n", $stats->{joins}, time - $started, $stats->{repeats};

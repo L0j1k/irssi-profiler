@@ -11,6 +11,9 @@ request.
     scripts/install.sh            # into ~/.irssi
     /script load profiler         # inside irssi
 
+Needs DBD::SQLite and NetAddr::IP (Debian: libdbd-sqlite3-perl,
+libnetaddr-ip-perl) and the system `whois`.
+
 Rules live in `~/.irssi/scripts/profiler.rules`. See
 `config/profiler.rules.example` for the format. Run `/profiler reload` after
 editing.
@@ -27,14 +30,14 @@ been running all along.
 
     scripts/import_logs.pl --logs ~/irclogs/EFNet --network efnet
     /script unload profiler
-    cp build/profiler-data/efnet.json ~/.irssi/scripts/profiler-data/
+    cp build/profiler-data/efnet.sqlite ~/.irssi/scripts/profiler-data/
     /script load profiler
 
-Unload the script before copying, or irssi will save its in-memory copy over
-the import. `--network` must be the irssi server tag. Logs only hold nick,
-ident, host, channel and time, so imported sightings have no realname, server
-or version, and no host lookups are done. On a synthetic year of 182k joins it
-takes under a minute and writes 24 MB. Run it with `--help` for the options.
+Unload the script before copying, since irssi keeps the database open.
+`--network` must be the irssi server tag. Logs only hold nick, ident, host,
+channel and time, so imported sightings have no realname, server or version,
+and no host lookups are done. On a synthetic year of 182k joins it takes
+about 80 seconds and writes 20 MB. Run it with `--help` for the options.
 
 ## What happens on a join
 
@@ -50,16 +53,16 @@ takes under a minute and writes 24 MB. Run it with `--help` for the options.
    is checked for VPN/proxy/Tor/hosting keywords. Results are cached per host
    for `profiler_hostinfo_max_age` seconds.
 3. The joiner is judged against the earlier sightings of that nick, then the
-   sighting is recorded in `~/.irssi/scripts/profiler-data/<network>.json`.
-   Changes are written once a minute and when the script unloads. The file
-   is compact JSON, so use `jq` to read it.
+   sighting is recorded in the SQLite database
+   `~/.irssi/scripts/profiler-data/<network>.sqlite`, committed straight
+   away. The `sqlite3` command can read it while irssi is running.
 4. A nick profiled in a channel isn't profiled there again for
    `profiler_recheck` seconds. Rejoin spam can't inflate trust.
 
 ## Scoring
 
 The question is "is this really the person who has been using this nick?"
-Each nick keeps a log of its last 200 sightings. Older sightings count for less
+Every sighting is kept, and a nick is judged against its latest 200. Older sightings count for less
 and less, losing half their weight every `profiler_half_life_days` (default 90).
 
 Each attribute of a join scores from -1 to +1 against that history:

@@ -75,6 +75,8 @@ subtest 'replaying a log directory' => sub {
     is($troll->{ident}, 'lol', 'last sighting is the impostor');
     is($troll->{verdict}, 'suspect', 'judged suspect');
     ok($troll->{quarantined}, 'quarantined');
+
+    is(scalar @{ Profiler::Store->new($dir)->profile('efnet', 'bob')->{sightings} }, 5, 'everything committed');
 };
 
 subtest 'host names are not resolved' => sub {

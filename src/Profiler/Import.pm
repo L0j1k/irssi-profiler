@@ -93,6 +93,8 @@ sub replay {
     for my $entry (channel_logs_by_day($arg{logs})) {
         my ($day, $files) = @$entry;
         if (substr($day, 0, 7) ne $month) {
+            # Committing once a month keeps the import fast.
+            $store->flush;
             $month = substr($day, 0, 7);
             $arg{on_month}->($month) if $arg{on_month};
         }
@@ -137,6 +139,7 @@ sub replay {
             $stats{promoted} += $store->promote_if_moved($network, $j->{nick}, $j->{time}, $promote_count, $promote_days);
         }
     }
+    $store->flush;
     return \%stats;
 }
 

@@ -3,99 +3,172 @@ package Profiler::Store;
 use strict;
 use warnings;
 
-use JSON::XS;
+use DBI;
 
 use Profiler::Score;
 
-# One JSON file per network in the data directory, loaded the first time that
-# network is used and kept in memory after that. Each file looks like:
+# One SQLite database per network in the data directory, holding every
+# sighting ever recorded and the cached host lookups. Scoring only needs a
+# nick's latest sightings, so those are loaded the first time the nick comes
+# up and kept in memory after that, with every change written through to the
+# database.
 #
-#     {
-#       "users": {
-#         "<lowercased nick>": {
-#           "nick": "Bob", "first_seen": ..., "last_seen": ...,
-#           "sightings": [
-#             { "time": ..., "host": ..., "ip": ..., "ident": ..., "realname": ...,
-#               "server": ..., "version": ..., "channel": ..., "proxy": ...,
-#               "verdict": "consistent", "quarantined": 0, "reviewed": 0 },
-#             ...
-#           ]
-#         }
-#       },
-#       "hostinfo": { "<host>": { "checked": time, "ip": ..., "proxy": ... } }
-#     }
+# A sighting judged "suspect" or "new host" is quarantined: kept for the
+# record but left out of the history its nick is judged against, so an
+# impostor can't train the profile toward themselves. /profiler accept or
+# reject marks it reviewed.
 #
-# A sighting judged "suspect" is quarantined: kept for the record but left out
-# of the history its nick is judged against, so an impostor can't train the
-# profile toward themselves. /profiler accept or reject marks it reviewed.
+# Changes are made inside a transaction that flush() commits. The live script
+# flushes after every join. The importer flushes once a month of logs, since
+# committing a million times would be slow.
 
-# Observation fields kept in each sighting. Missing ones are left out.
+# Observation fields kept in each sighting. Missing ones are stored as NULL
+# and left out when loaded.
 my @FIELDS = qw(host ip ident realname server version channel proxy);
 
-# Sightings kept per nick. The oldest go first.
-our $MAX_SIGHTINGS = 200;
+my @HOSTINFO_FIELDS = qw(ip netname org origin proxy error);
 
-# Compact rather than pretty: it halves the size of a big file. Pipe it through
-# jq to read it.
-my $JSON = JSON::XS->new->canonical;
+# How many of a nick's latest sightings a profile holds for scoring. Older
+# ones stay in the database.
+our $HISTORY_SIZE = 200;
+
+my @SCHEMA = (
+    'CREATE TABLE IF NOT EXISTS sightings (
+        id          INTEGER PRIMARY KEY,
+        nick        TEXT NOT NULL,
+        nick_key    TEXT NOT NULL,
+        time        INTEGER NOT NULL,
+        host TEXT, ip TEXT, ident TEXT, realname TEXT, server TEXT,
+        version TEXT, channel TEXT, proxy TEXT,
+        verdict     TEXT NOT NULL,
+        quarantined INTEGER NOT NULL DEFAULT 0,
+        reviewed    INTEGER NOT NULL DEFAULT 0,
+        promoted    INTEGER
+    )',
+    'CREATE INDEX IF NOT EXISTS sightings_by_nick ON sightings (nick_key, time)',
+    'CREATE INDEX IF NOT EXISTS sightings_waiting ON sightings (time)
+        WHERE quarantined = 1 AND reviewed = 0',
+    'CREATE TABLE IF NOT EXISTS hostinfo (
+        host    TEXT PRIMARY KEY,
+        checked INTEGER NOT NULL,
+        ip TEXT, netname TEXT, org TEXT, origin TEXT, proxy TEXT, error TEXT
+    )',
+);
 
 sub new {
     my ($class, $dir) = @_;
-    return bless { dir => $dir, nets => {}, broken => {}, dirty => {} }, $class;
+    return bless { dir => $dir, dbs => {}, broken => {}, profiles => {} }, $class;
 }
 
 sub path {
     my ($self, $network) = @_;
     (my $name = lc $network) =~ s/[^a-z0-9._-]/_/g;
-    return "$self->{dir}/$name.json";
+    return "$self->{dir}/$name.sqlite";
 }
 
-# Dies if the file exists but cannot be read. The network stays marked broken
-# so later calls die too and nothing ever saves over the file.
-sub net {
-    my ($self, $network) = @_;
+# The network's database handle. Returns undef if there's no database yet,
+# unless $create is set, so just looking something up never makes a file.
+# Dies if the file exists but isn't a usable database. The network stays
+# marked broken so later calls die too and nothing ever writes to the file.
+sub db {
+    my ($self, $network, $create) = @_;
     my $key = lc $network;
     die $self->{broken}{$key} if $self->{broken}{$key};
-    return $self->{nets}{$key} if $self->{nets}{$key};
+    return $self->{dbs}{$key} if $self->{dbs}{$key};
 
     my $path = $self->path($network);
-    my $data = { users => {}, hostinfo => {} };
-    if (-e $path) {
-        $data = eval {
-            open my $fh, '<', $path or die "$!\n";
-            local $/;
-            $JSON->decode(scalar <$fh>);
-        };
-        if (!$data) {
-            $self->{broken}{$key} = "cannot parse $path: $@";
-            die $self->{broken}{$key};
+    return undef unless $create || -e $path;
+    my $dbh = eval {
+        my $dbh = DBI->connect("dbi:SQLite:dbname=$path", '', '',
+            # DBD::SQLite starts transactions with BEGIN IMMEDIATE by default,
+            # which takes the write lock even to read. Deferred lets a reader
+            # in while another process holds the write lock.
+            { RaiseError => 1, PrintError => 0, AutoCommit => 1, sqlite_use_immediate_transaction => 0 });
+        # NORMAL skips the fsync on each commit, which is what keeps a commit
+        # per join cheap. A power cut can lose the last few commits.
+        $dbh->do('PRAGMA synchronous = NORMAL');
+        # Setting up needs a write lock, so it's only done on a new file.
+        # Otherwise a reader would wait on whoever is writing. WAL is stored
+        # in the file and lets the sqlite3 command or the diagnostic read
+        # while irssi or the importer writes.
+        my ($ready) = $dbh->selectrow_array("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sightings'");
+        if (!$ready) {
+            $dbh->do('PRAGMA journal_mode = WAL');
+            $dbh->do($_) for @SCHEMA;
         }
+        $dbh->{AutoCommit} = 0;
+        $dbh;
+    };
+    if (!$dbh) {
+        (my $err = $@) =~ s/\s+$//;
+        $self->{broken}{$key} = "cannot open $path: $err\n";
+        die $self->{broken}{$key};
     }
-    return $self->{nets}{$key} = $data;
+    return $self->{dbs}{$key} = $dbh;
 }
 
+sub sighting_from_row {
+    my ($row) = @_;
+    delete @$row{qw(nick nick_key)};
+    delete $row->{$_} for grep { !defined $row->{$_} } keys %$row;
+    return $row;
+}
+
+# A nick's profile: { nick, first_seen, last_seen, sightings => [...] } with
+# the latest $HISTORY_SIZE sightings, oldest first. Undef if never seen.
 sub profile {
     my ($self, $network, $nick) = @_;
-    return $self->net($network)->{users}{ lc $nick };
+    my $key = lc $nick;
+    my $cache = $self->{profiles}{ lc $network } //= {};
+    return $cache->{$key} if $cache->{$key};
+
+    my $dbh = $self->db($network) or return undef;
+    my $rows = $dbh->selectall_arrayref(
+        'SELECT * FROM sightings WHERE nick_key = ? ORDER BY time DESC, id DESC LIMIT ?',
+        { Slice => {} }, $key, $HISTORY_SIZE);
+    return undef unless @$rows;
+
+    my ($first_seen) = $dbh->selectrow_array('SELECT MIN(time) FROM sightings WHERE nick_key = ?', undef, $key);
+    # Copied out before sighting_from_row strips the nick from the rows.
+    my ($display, $last_seen) = @{ $rows->[0] }{qw(nick time)};
+    my @sightings = map { sighting_from_row($_) } reverse @$rows;
+    return $cache->{$key} = {
+        nick       => $display,
+        first_seen => $first_seen,
+        last_seen  => $last_seen,
+        sightings  => \@sightings,
+    };
 }
 
 sub record {
     my ($self, $network, $obs, $now, $verdict) = @_;
-    my $users = $self->net($network)->{users};
-    $self->{dirty}{ lc $network } = 1;
-    my $p = $users->{ lc $obs->{nick} } //= { first_seen => $now, sightings => [] };
+    my $dbh = $self->db($network, 1);
+    my $p = $self->profile($network, $obs->{nick});
+    if (!$p) {
+        $p = { first_seen => $now, sightings => [] };
+        $self->{profiles}{ lc $network }{ lc $obs->{nick} } = $p;
+    }
 
     my %sighting = map { defined $obs->{$_} ? ($_ => $obs->{$_}) : () } @FIELDS;
     $sighting{channel} = lc $sighting{channel} if defined $sighting{channel};
     $sighting{time} = $now;
     $sighting{verdict} = $verdict;
     $sighting{quarantined} = $verdict eq 'suspect' || $verdict eq 'new host' ? 1 : 0;
+    $sighting{reviewed} = 0;
+
+    my @columns = ('time', 'verdict', 'quarantined', @FIELDS);
+    my $insert = $dbh->prepare_cached('INSERT INTO sightings (nick, nick_key, ' . join(', ', @columns)
+        . ') VALUES (?, ?' . ', ?' x @columns . ')');
+    # map rather than a hash slice: sub arguments are aliases, so a slice
+    # would add the missing fields to %sighting as undef.
+    $insert->execute($obs->{nick}, lc $obs->{nick}, map { $sighting{$_} } @columns);
+    $sighting{id} = $dbh->sqlite_last_insert_rowid;
 
     $p->{nick} = $obs->{nick};
     $p->{last_seen} = $now;
     push @{ $p->{sightings} }, \%sighting;
-    splice @{ $p->{sightings} }, 0, @{ $p->{sightings} } - $MAX_SIGHTINGS
-        if @{ $p->{sightings} } > $MAX_SIGHTINGS;
+    splice @{ $p->{sightings} }, 0, @{ $p->{sightings} } - $HISTORY_SIZE
+        if @{ $p->{sightings} } > $HISTORY_SIZE;
     return $p;
 }
 
@@ -103,12 +176,10 @@ sub record {
 # { nick => ..., sighting => ... }.
 sub suspects {
     my ($self, $network) = @_;
-    my @found;
-    for my $p (values %{ $self->net($network)->{users} }) {
-        push @found, map { { nick => $p->{nick}, sighting => $_ } }
-            grep { $_->{quarantined} && !$_->{reviewed} } @{ $p->{sightings} };
-    }
-    return sort { $a->{sighting}{time} <=> $b->{sighting}{time} } @found;
+    my $dbh = $self->db($network) or return ();
+    my $rows = $dbh->selectall_arrayref(
+        'SELECT * FROM sightings WHERE quarantined = 1 AND reviewed = 0 ORDER BY time, id', { Slice => {} });
+    return map { my $nick = $_->{nick}; { nick => $nick, sighting => sighting_from_row($_) } } @$rows;
 }
 
 # Let a nick's unreviewed suspect sightings count after all, say because they
@@ -124,71 +195,96 @@ sub reject {
     return $self->review($network, $nick, 1);
 }
 
+# Works on the database, so it reaches sightings too old to be in the
+# profile, then brings the profile in memory up to date.
 sub review {
     my ($self, $network, $nick, $quarantined) = @_;
-    my $p = $self->profile($network, $nick) or return 0;
-    my @pending = grep { $_->{quarantined} && !$_->{reviewed} } @{ $p->{sightings} };
-    $self->{dirty}{ lc $network } = 1 if @pending;
-    for my $s (@pending) {
+    my $dbh = $self->db($network) or return 0;
+    my $changed = $dbh->do('UPDATE sightings SET quarantined = ?, reviewed = 1
+        WHERE nick_key = ? AND quarantined = 1 AND reviewed = 0', undef, $quarantined, lc $nick);
+
+    my $p = $self->{profiles}{ lc $network }{ lc $nick };
+    for my $s (grep { $_->{quarantined} && !$_->{reviewed} } @{ $p ? $p->{sightings} : [] }) {
         $s->{quarantined} = $quarantined;
         $s->{reviewed} = 1;
     }
-    return scalar @pending;
+    return $changed + 0;
 }
 
 # If the nick's quarantined sightings look like they moved rather than like
 # an impostor (see Profiler::Score::promotable), let them count. They are
-# marked promoted, so a later look at the file can tell them apart from
+# marked promoted, so a later look at the data can tell them apart from
 # hand-accepted ones. Returns how many were promoted.
 sub promote_if_moved {
     my ($self, $network, $nick, $now, $min_count, $min_days) = @_;
     my $p = $self->profile($network, $nick) or return 0;
     my @moved = Profiler::Score::promotable($p, $min_count, $min_days);
+    return 0 unless @moved;
+
+    my $sth = $self->db($network)->prepare_cached(
+        'UPDATE sightings SET quarantined = 0, reviewed = 1, promoted = ? WHERE id = ?');
     for my $s (@moved) {
         $s->{quarantined} = 0;
         $s->{reviewed} = 1;
         $s->{promoted} = $now;
+        $sth->execute($now, $s->{id});
     }
-    $self->{dirty}{ lc $network } = 1 if @moved;
     return scalar @moved;
 }
 
 sub set_hostinfo {
     my ($self, $network, $host, $info, $now) = @_;
-    $self->{dirty}{ lc $network } = 1;
-    $self->net($network)->{hostinfo}{$host} = { %$info, checked => $now };
+    $self->db($network, 1)->do('INSERT OR REPLACE INTO hostinfo (host, checked, ' . join(', ', @HOSTINFO_FIELDS)
+        . ') VALUES (?, ?' . ', ?' x @HOSTINFO_FIELDS . ')', undef, $host, $now, @$info{@HOSTINFO_FIELDS});
 }
 
 # The cached lookup for a host if it is younger than max_age seconds.
 sub fresh_hostinfo {
     my ($self, $network, $host, $now, $max_age) = @_;
-    my $info = $self->net($network)->{hostinfo}{$host} or return undef;
+    my $dbh = $self->db($network) or return undef;
+    my $info = $dbh->selectrow_hashref('SELECT * FROM hostinfo WHERE host = ?', undef, $host) or return undef;
+    delete $info->{host};
     return $now - $info->{checked} <= $max_age ? $info : undef;
 }
 
-# Writes to a temp file and renames it over the real one, so a crash halfway
-# through never leaves a truncated file behind.
-sub save {
+# Every sighting of every nick, oldest first, shaped as
+# { users => { <lowercased nick> => { nick, sightings => [...] } } }.
+# This reads the whole database into memory, so it's for offline tools like
+# the suspect diagnostic, not for irssi.
+sub all_profiles {
     my ($self, $network) = @_;
-    my $data = $self->net($network);
-    my $path = $self->path($network);
-    my $tmp = "$path.tmp";
-
-    open my $fh, '>', $tmp or die "cannot write $tmp: $!\n";
-    print $fh $JSON->encode($data);
-    close $fh or die "cannot write $tmp: $!\n";
-    rename $tmp, $path or die "cannot rename $tmp to $path: $!\n";
-    delete $self->{dirty}{ lc $network };
+    my %users;
+    my $dbh = $self->db($network) or return { users => {} };
+    my $sth = $dbh->prepare('SELECT * FROM sightings ORDER BY nick_key, time, id');
+    $sth->execute;
+    while (my $row = $sth->fetchrow_hashref) {
+        my $p = $users{ $row->{nick_key} } //= { sightings => [] };
+        $p->{nick} = $row->{nick};
+        push @{ $p->{sightings} }, sighting_from_row({ %$row });
+    }
+    return { users => \%users };
 }
 
-# Saves every network changed since its last save and returns their names.
-# The live script calls this on a timer, since rewriting a big file on every
-# join would make irssi stutter.
-sub save_dirty {
+# Commits whatever changed on every network.
+sub flush {
     my ($self) = @_;
-    my @saved = sort keys %{ $self->{dirty} };
-    $self->save($_) for @saved;
-    return @saved;
+    $_->commit for values %{ $self->{dbs} };
+}
+
+sub close {
+    my ($self) = @_;
+    $self->flush;
+    $_->disconnect for values %{ $self->{dbs} };
+    $self->{dbs} = {};
+    $self->{profiles} = {};
+}
+
+# A store that goes away without close() still commits what it has, rather
+# than DBI rolling it back with a warning.
+sub DESTROY {
+    my ($self) = @_;
+    local $@;
+    eval { $self->close };
 }
 
 1;

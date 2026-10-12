@@ -262,7 +262,7 @@ sub look_up_host {
 
         my $res = eval { decode_json($json // '') } || { error => 'host lookup died without an answer' };
         info("host lookup for $job->{host}: $res->{error}") if $res->{error};
-        eval { $store->set_hostinfo($job->{tag}, $job->{host}, $res, time) };
+        eval { $store->set_hostinfo($job->{tag}, $job->{host}, $res, time); $store->flush };
         info($@) if $@;
         judge($job, $res);
     }, undef);
@@ -284,6 +284,7 @@ sub judge {
         $promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
             Irssi::settings_get_int('profiler_promote_after_sightings'),
             Irssi::settings_get_int('profiler_promote_after_days'));
+        $store->flush;
         1;
     } or return info($@);
 
@@ -337,14 +338,10 @@ sub judge {
     }
 }
 
-sub save_changes {
-    eval { $store->save_dirty; 1 } or info($@);
-}
-
-# irssi calls this when the script is unloaded, which includes quitting, so
-# whatever changed since the last timed save isn't lost.
+# irssi calls this when the script is unloaded, which includes quitting.
+# Everything is committed as it happens, so this just closes the databases.
 sub UNLOAD {
-    save_changes();
+    eval { $store->close; 1 } or info($@);
 }
 
 sub cmd_profiler {
@@ -397,7 +394,9 @@ sub cmd_profiler {
     elsif (($subcmd eq 'accept' || $subcmd eq 'reject') && length $arg) {
         return info("/profiler $subcmd needs an active server") unless $server;
         my $n = eval {
-            $subcmd eq 'accept' ? $store->accept($server->{tag}, $arg) : $store->reject($server->{tag}, $arg);
+            my $n = $subcmd eq 'accept' ? $store->accept($server->{tag}, $arg) : $store->reject($server->{tag}, $arg);
+            $store->flush;
+            $n;
         };
         return info($@) if $@;
         info($subcmd eq 'accept'
@@ -432,7 +431,6 @@ Irssi::signal_add('redir profiler_whois_end', \&on_whois_end);
 Irssi::signal_add('ctcp reply', \&on_ctcp_reply);
 Irssi::command_bind('profiler', \&cmd_profiler);
 Irssi::timeout_add(500, \&tick, undef);
-Irssi::timeout_add(60_000, \&save_changes, undef);
 
 open_store();
 load_rules();
