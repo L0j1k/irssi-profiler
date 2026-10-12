@@ -18,6 +18,24 @@ editing.
 Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
 `/profiler suspects`, `/profiler accept <nick>`, `/profiler reject <nick>`.
 
+## Starting from your logs
+
+`scripts/import_logs.pl` replays the joins in your irssi logs, oldest first,
+through the same judging the live script uses. Each join is judged as of its
+own date, so profiles, decay and quarantine come out as if the profiler had
+been running all along.
+
+    scripts/import_logs.pl --logs ~/irclogs/EFNet --network efnet
+    /script unload profiler
+    cp build/profiler-data/efnet.json ~/.irssi/scripts/profiler-data/
+    /script load profiler
+
+Unload the script before copying, or irssi will save its in-memory copy over
+the import. `--network` must be the irssi server tag. Logs only hold nick,
+ident, host, channel and time, so imported sightings have no realname, server
+or version, and no host lookups are done. On a synthetic year of 182k joins it
+takes under a minute and writes 24 MB. Run it with `--help` for the options.
+
 ## What happens on a join
 
 1. The join goes into a per-server whois queue. The queue sends at most one
@@ -31,8 +49,10 @@ Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
    and run through the system `whois` in a child process. The registry record
    is checked for VPN/proxy/Tor/hosting keywords. Results are cached per host
    for `profiler_hostinfo_max_age` seconds.
-3. The joiner is scored against the earlier sightings of that nick, then the
+3. The joiner is judged against the earlier sightings of that nick, then the
    sighting is recorded in `~/.irssi/scripts/profiler-data/<network>.json`.
+   Changes are written once a minute and when the script unloads. The file
+   is compact JSON, so use `jq` to read it.
 4. A nick profiled in a channel isn't profiled there again for
    `profiler_recheck` seconds. Rejoin spam can't inflate trust.
 
@@ -101,3 +121,4 @@ really did move), and `/profiler reject <nick>` files them away.
     prove tests/                          # unit tests
     PROFILER_LIVE_TESTS=1 prove tests/    # also runs a real whois lookup
     scripts/smoke_irssi.sh                # loads the script into a real irssi
+    scripts/make_synthetic_logs.pl DIR    # fake logs for timing the importer
