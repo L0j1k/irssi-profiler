@@ -29,10 +29,11 @@ sub parse_path {
 }
 
 # 08:57:35-!- nick [ident@host] has joined #channel
+# 01:26 -!- nick [ident@host] has joined #channel     (older logs)
 sub parse_join {
     my ($line) = @_;
     my ($h, $mi, $s, $nick, $ident, $host, $channel) =
-        $line =~ /^(\d\d):(\d\d)(?::(\d\d))?-!- (\S+) \[([^\]\@\s]+)\@([^\]\s]+)\] has joined (\S+)/
+        $line =~ /^(\d\d):(\d\d)(?::(\d\d))? ?-!- (\S+) \[([^\]\@\s]+)\@([^\]\s]+)\] has joined (\S+)/
         or return undef;
     return {
         hour => $h + 0, min => $mi + 0, sec => ($s // 0) + 0,

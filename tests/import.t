@@ -29,6 +29,11 @@ subtest 'parse_join' => sub {
     is_deeply(Profiler::Import::parse_join('08:57:35-!- EVE2_ [~Maceve@192.0.2.26] has joined #chan'),
         { hour => 8, min => 57, sec => 35, nick => 'EVE2_', ident => '~Maceve', host => '192.0.2.26', channel => '#chan' },
         'join');
+    is_deeply(Profiler::Import::parse_join('01:26 -!- bob [~bob@cpe-192-0-2-202.example.net] has joined #2600'),
+        { hour => 1, min => 26, sec => 0, nick => 'bob', ident => '~bob', host => 'cpe-192-0-2-202.example.net', channel => '#2600' },
+        'older format: no seconds, space before -!-');
+    is(Profiler::Import::parse_join('15:10 -!- \\\\\\\\\\ [~m@192.0.2.82] has joined #2600')->{nick}, '\\\\\\\\\\',
+        'odd nicks');
     is(Profiler::Import::parse_join('06:05:46-!- walter [~walter@192.0.2.1] has quit [Ping timeout]'),
         undef, 'quit is not a join');
     is(Profiler::Import::parse_join('21:43:58<+bob> someone has joined #chan [x@y]'), undef, 'chat is not a join');
