@@ -66,12 +66,4 @@ subtest 'a full queue drops new jobs' => sub {
     is($q->length, 4, 'length');
 };
 
-subtest 'remove' => sub {
-    my $q = queue();
-    $q->add('a', 'job a', 0);
-    $q->add('b', 'job b', 0);
-    $q->remove('a');
-    is($q->take(0), 'job b', 'removed job skipped');
-};
-
 done_testing;

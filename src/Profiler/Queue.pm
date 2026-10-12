@@ -37,12 +37,6 @@ sub add {
     return 1;
 }
 
-sub remove {
-    my ($self, $key) = @_;
-    return unless delete $self->{keys}{$key};
-    $self->{jobs} = [ grep { $_->[0] ne $key } @{ $self->{jobs} } ];
-}
-
 sub paused {
     my ($self, $now) = @_;
     return $now < $self->{paused_until};
