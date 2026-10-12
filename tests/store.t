@@ -80,6 +80,27 @@ subtest 'history is capped, dropping the oldest' => sub {
     is($p->{first_seen}, 1, 'first seen survives the cap');
 };
 
+subtest 'save_dirty writes only networks that changed' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    is_deeply([ $store->save_dirty ], [], 'nothing to save');
+
+    $store->record('EFnet', \%obs, 1, 'unknown');
+    $store->set_hostinfo('libera', 'h', {}, 1);
+    $store->profile('other', 'bob');
+    is_deeply([ sort $store->save_dirty ], ['efnet', 'libera'], 'saved changed networks');
+    ok(-f "$dir/efnet.json" && -f "$dir/libera.json", 'files written');
+    ok(!-e "$dir/other.json", 'merely reading does not save');
+    is_deeply([ $store->save_dirty ], [], 'clean again');
+
+    $store->record('efnet', { %obs, ident => 'x' }, 2, 'suspect');
+    $store->save_dirty;
+    $store->accept('efnet', 'bob');
+    is_deeply([ $store->save_dirty ], ['efnet'], 'reviewing marks dirty too');
+    is($store->accept('efnet', 'bob'), 0, 'nothing left');
+    is_deeply([ $store->save_dirty ], [], 'a no-op review does not');
+};
+
 subtest 'odd network names make safe file names' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);

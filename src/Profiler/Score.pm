@@ -61,6 +61,13 @@ sub familiarity {
 
 sub same_subnet {
     my ($a, $b) = @_;
+    # IPv4 is the common case and comparing the first three octets as text is
+    # much faster than building NetAddr::IP objects, which matters when
+    # replaying years of logs.
+    my ($neta) = $a =~ /^(\d+\.\d+\.\d+)\.\d+$/;
+    my ($netb) = $b =~ /^(\d+\.\d+\.\d+)\.\d+$/;
+    return $neta eq $netb ? 1 : 0 if defined $neta && defined $netb;
+
     my $ipa = NetAddr::IP->new($a) or return 0;
     my $ipb = NetAddr::IP->new($b) or return 0;
     return 0 unless $ipa->version == $ipb->version;
@@ -105,15 +112,17 @@ sub similarity {
 #
 # Lots of people share a VPN or hosting exit, so the host isn't judged at all
 # when the observation came from one.
+#
+# $weighted is the history as [sighting, age weight] pairs.
 sub attribute_score {
-    my ($attr, $history, $obs, $now) = @_;
+    my ($attr, $weighted, $obs) = @_;
     return undef unless defined $obs->{$attr};
     return undef if $attr eq 'host' && $obs->{proxy};
 
     my ($total, $support, %by_value) = (0, 0);
-    for my $seen (@$history) {
+    for my $pair (@$weighted) {
+        my ($seen, $w) = @$pair;
         next unless defined $seen->{$attr};
-        my $w = age_weight($seen, $now);
         $total += $w;
         $by_value{ $seen->{$attr} } += $w;
         $support += $w * similarity($attr, $seen, $obs);
@@ -137,19 +146,19 @@ sub attribute_score {
 # Call this before recording the observation, or it gets compared with itself.
 sub judge {
     my ($profile, $obs, $now) = @_;
-    my @history = $profile ? history($profile) : ();
-    my $confidence = familiarity(sum0(map { age_weight($_, $now) } @history));
+    my @weighted = map { [ $_, age_weight($_, $now) ] } $profile ? history($profile) : ();
+    my $confidence = familiarity(sum0(map { $_->[1] } @weighted));
 
-    my (%parts, $weighted, $weights);
+    my (%parts, $sum, $weights);
     for my $attr (keys %MATCH_WEIGHT) {
-        my $s = attribute_score($attr, \@history, $obs, $now);
+        my $s = attribute_score($attr, \@weighted, $obs);
         next unless defined $s;
         my $w = $s >= 0 ? $MATCH_WEIGHT{$attr} : $CONTRADICT_WEIGHT{$attr};
         $parts{$attr} = $s;
-        $weighted += $w * $s;
+        $sum += $w * $s;
         $weights += $w;
     }
-    my $match = $weights ? $weighted / $weights : 0;
+    my $match = $weights ? $sum / $weights : 0;
 
     my $verdict = $confidence < $MIN_CONFIDENCE ? 'unknown'
                 : $match < 0                    ? 'suspect'

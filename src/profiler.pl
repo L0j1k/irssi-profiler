@@ -280,7 +280,6 @@ sub judge {
         $profile = $store->profile($job->{tag}, $job->{nick});
         $r = Profiler::Score::judge($profile, $obs, $now);
         $store->record($job->{tag}, $obs, $now, $r->{verdict});
-        $store->save($job->{tag});
         1;
     } or return info($@);
 
@@ -319,6 +318,16 @@ sub judge {
         $say->("WARNING $who is on a likely VPN, proxy or hosting address "
             . "($hostinfo->{ip}, $owner, matched '$hostinfo->{proxy}')");
     }
+}
+
+sub save_changes {
+    eval { $store->save_dirty; 1 } or info($@);
+}
+
+# irssi calls this when the script is unloaded, which includes quitting, so
+# whatever changed since the last timed save isn't lost.
+sub UNLOAD {
+    save_changes();
 }
 
 sub cmd_profiler {
@@ -371,9 +380,7 @@ sub cmd_profiler {
     elsif (($subcmd eq 'accept' || $subcmd eq 'reject') && length $arg) {
         return info("/profiler $subcmd needs an active server") unless $server;
         my $n = eval {
-            my $count = $subcmd eq 'accept' ? $store->accept($server->{tag}, $arg) : $store->reject($server->{tag}, $arg);
-            $store->save($server->{tag});
-            $count;
+            $subcmd eq 'accept' ? $store->accept($server->{tag}, $arg) : $store->reject($server->{tag}, $arg);
         };
         return info($@) if $@;
         info($subcmd eq 'accept'
@@ -406,6 +413,7 @@ Irssi::signal_add('redir profiler_whois_end', \&on_whois_end);
 Irssi::signal_add('ctcp reply', \&on_ctcp_reply);
 Irssi::command_bind('profiler', \&cmd_profiler);
 Irssi::timeout_add(500, \&tick, undef);
+Irssi::timeout_add(60_000, \&save_changes, undef);
 
 open_store();
 load_rules();

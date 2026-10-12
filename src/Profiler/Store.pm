@@ -3,7 +3,7 @@ package Profiler::Store;
 use strict;
 use warnings;
 
-use JSON::PP;
+use JSON::XS;
 
 # One JSON file per network in the data directory, loaded the first time that
 # network is used and kept in memory after that. Each file looks like:
@@ -33,11 +33,13 @@ my @FIELDS = qw(host ip ident realname server version channel proxy);
 # Sightings kept per nick. The oldest go first.
 our $MAX_SIGHTINGS = 200;
 
-my $JSON = JSON::PP->new->canonical->pretty;
+# Compact rather than pretty: it halves the size of a big file. Pipe it through
+# jq to read it.
+my $JSON = JSON::XS->new->canonical;
 
 sub new {
     my ($class, $dir) = @_;
-    return bless { dir => $dir, nets => {}, broken => {} }, $class;
+    return bless { dir => $dir, nets => {}, broken => {}, dirty => {} }, $class;
 }
 
 sub path {
@@ -78,6 +80,7 @@ sub profile {
 sub record {
     my ($self, $network, $obs, $now, $verdict) = @_;
     my $users = $self->net($network)->{users};
+    $self->{dirty}{ lc $network } = 1;
     my $p = $users->{ lc $obs->{nick} } //= { first_seen => $now, sightings => [] };
 
     my %sighting = map { defined $obs->{$_} ? ($_ => $obs->{$_}) : () } @FIELDS;
@@ -123,6 +126,7 @@ sub review {
     my ($self, $network, $nick, $quarantined) = @_;
     my $p = $self->profile($network, $nick) or return 0;
     my @pending = grep { $_->{quarantined} && !$_->{reviewed} } @{ $p->{sightings} };
+    $self->{dirty}{ lc $network } = 1 if @pending;
     for my $s (@pending) {
         $s->{quarantined} = $quarantined;
         $s->{reviewed} = 1;
@@ -132,6 +136,7 @@ sub review {
 
 sub set_hostinfo {
     my ($self, $network, $host, $info, $now) = @_;
+    $self->{dirty}{ lc $network } = 1;
     $self->net($network)->{hostinfo}{$host} = { %$info, checked => $now };
 }
 
@@ -154,6 +159,17 @@ sub save {
     print $fh $JSON->encode($data);
     close $fh or die "cannot write $tmp: $!\n";
     rename $tmp, $path or die "cannot rename $tmp to $path: $!\n";
+    delete $self->{dirty}{ lc $network };
+}
+
+# Saves every network changed since its last save and returns their names.
+# The live script calls this on a timer, since rewriting a big file on every
+# join would make irssi stutter.
+sub save_dirty {
+    my ($self) = @_;
+    my @saved = sort keys %{ $self->{dirty} };
+    $self->save($_) for @saved;
+    return @saved;
 }
 
 1;

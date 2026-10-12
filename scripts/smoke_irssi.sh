@@ -65,6 +65,9 @@ wait_for 'needs an active server' || fail "/profiler show without a server"
 
 [[ -d "$home/scripts/profiler-data" ]] || fail "data directory not created"
 
+tmux send-keys -t "$session" "/script unload profiler" Enter
+wait_for 'Unloaded script profiler' || fail "script did not unload"
+
 if tmux capture-pane -p -t "$session" | grep -qiE 'error|died|syntax|undefined subroutine'; then
     fail "errors on screen"
 fi
