@@ -109,10 +109,14 @@ Someone who really moved would otherwise stay suspect for months, since
 their new host never enters the history. So when a nick's quarantined
 sightings agree with each other, number at least
 `profiler_promote_after_sightings` (5) over at least
-`profiler_promote_after_days` (7), and the old habit hasn't shown up since,
-they're promoted: they count, and a line says the nick looks like it moved.
-A troll wearing a nick while its owner keeps turning up as usual never gets
-promoted.
+`profiler_promote_after_days` (7), they're promoted: they count, and a line
+says the nick has a new usual host. If the old host has stopped turning up,
+that's a move and nothing else has to match. If the old host is still in
+use, it's treated as a second home (work, phone, bouncer) and is promoted
+only when the ident, realname and client all match the accepted history.
+A troll who wears a nick while its owner keeps turning up stays quarantined
+unless they copy all of those. Ident is visible in every join line, so from
+logs alone a troll only has to copy that.
 
 Quarantine needs nothing from you. When you have time, `/profiler suspects`
 lists quarantined sightings. `/profiler accept <nick>` lets them count (they

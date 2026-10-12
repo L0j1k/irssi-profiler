@@ -317,7 +317,7 @@ sub judge {
     }
 
     if ($promoted) {
-        $say->("$job->{nick} looks like they moved: $promoted quarantined sighting(s) like this one "
+        $say->("$job->{nick} looks like they have a new usual host: $promoted quarantined sighting(s) like this one "
             . "now count toward their history. /profiler show $job->{nick} to check");
     }
 

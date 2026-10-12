@@ -162,7 +162,7 @@ subtest 'hosts in the same dynamic ISP pool are near matches' => sub {
     ok(!Profiler::Score::same_pool('cpe-1.example.net', 'cpe-1.example.net.evil'), 'rest must match exactly');
 };
 
-subtest 'promotable: a new habit that stuck while the old one went quiet' => sub {
+subtest 'promotable: a move, or a second home that matches everything but the host' => sub {
     my $day = sub { $NOW + $_[0] * $DAY };
     my %new = (%bob, host => 'new.isp.example', ip => '198.51.100.7');
     my $moved = sub {
@@ -178,9 +178,24 @@ subtest 'promotable: a new habit that stuck while the old one went quiet' => sub
     is($n->($moved->(20, 21, 22, 23, 24)), 0, 'not if it spans under seven days');
     is($n->($moved->(20, 23, 26, 29)), 0, 'not with only four');
 
-    my $back = $moved->(20, 22, 24, 26, 28);
-    push @{ $back->{sightings} }, { %bob, time => $day->(25) };
-    is($n->($back), 0, 'not if the old habit showed up in between');
+    # A second home: the old host keeps turning up, and the new one matches
+    # everything else about the usual person.
+    my $back = sub {
+        my (%change) = @_;
+        my $p = $moved->(20, 22, 24, 26, 28);
+        $_->{quarantined} and @$_{ keys %change } = values %change for @{ $p->{sightings} };
+        push @{ $p->{sightings} }, { %bob, time => $day->(25) };
+        return $p;
+    };
+    is($n->($back->()), 5, 'a second host alongside the old one, matching everything else');
+    is($n->($back->(version => 'irssi v1.2.3')), 5, 'same client at another version still matches');
+    is($n->($back->(ident => '~troll')), 0, 'not alongside the old habit with another ident');
+    is($n->($back->(realname => 'lol')), 0, 'not alongside the old habit with another realname');
+    is($n->($back->(version => 'mIRC v7.77')), 0, 'not alongside the old habit with another client');
+
+    my $moved_and_changed = $moved->(20, 22, 24, 26, 28);
+    $_->{quarantined} and $_->{ident} = 'newbox' for @{ $moved_and_changed->{sightings} };
+    is($n->($moved_and_changed), 5, 'a full move may change the ident too');
 
     my $scattered = $moved->(20, 22, 24, 26, 28);
     my $i = 0;

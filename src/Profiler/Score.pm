@@ -193,14 +193,33 @@ sub judge {
     };
 }
 
+# Does a sighting agree with the accepted history on everything we compare
+# except the host? Attributes that either side never recorded are skipped,
+# so imported sightings are compared on the ident alone.
+my @SECOND_HOME_ATTRS = qw(ident realname version);
+
+sub matches_apart_from_host {
+    my ($s, $accepted) = @_;
+    for my $attr (@SECOND_HOME_ATTRS) {
+        next unless defined $s->{$attr};
+        my @known = grep { defined $_->{$attr} } @$accepted;
+        next unless @known;
+        return 0 unless grep { similarity($attr, $_, $s) > 0 } @known;
+    }
+    return 1;
+}
+
 # When someone really moves (new ISP, new bouncer), every join from the new
 # host contradicts the old history and gets quarantined, and since quarantined
 # sightings never join the history, they'd stay suspect for months. So we
 # look for the shape of a move: the newest unreviewed quarantined sightings
-# agree with each other on the host, there are at least $min_count of them
-# spread over at least $min_days, and nothing from the old habit has shown up
-# since the first of them. A troll wearing the nick while its owner keeps
-# turning up as usual never fits that shape.
+# agree with each other on the host, and there are at least $min_count of them
+# spread over at least $min_days.
+#
+# If the old habit has stopped since the first of them, that's a move and
+# anything may have changed. If it's still turning up, this could be a second
+# home (work, phone, bouncer) or a troll sitting on the nick, so we only
+# promote when everything other than the host matches the accepted history.
 #
 # Returns the sightings to promote, or an empty list.
 sub promotable {
@@ -216,7 +235,10 @@ sub promotable {
     my @agreeing = grep { similarity('host', $_, $latest) > 0 } @held;
     return () if @agreeing < $min_count;
     return () if $latest->{time} - $agreeing[0]{time} < $min_days * 86400;
-    return () if grep { !$_->{quarantined} && $_->{time} > $agreeing[0]{time} } @sightings;
+    my @accepted = grep { !$_->{quarantined} } @sightings;
+    if (grep { $_->{time} > $agreeing[0]{time} } @accepted) {
+        return () if grep { !matches_apart_from_host($_, \@accepted) } @agreeing;
+    }
     return @agreeing;
 }
 
