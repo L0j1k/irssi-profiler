@@ -63,6 +63,10 @@ our $PROMOTE_AFTER_DAYS = 7;
 our $HOST_CHANGES_MIN_SIGHTINGS = 5;
 our $HOST_CHANGES_OFTEN_AT = 0.25;
 
+# The attributes that say who someone is, as opposed to where they connect
+# from (host, server) or what they happen to be doing (channel).
+my @IDENTITY_ATTRS = qw(ident realname version);
+
 my %PREFIX = (4 => 24, 6 => 64);
 
 sub familiarity {
@@ -200,7 +204,7 @@ sub judge {
         verdict    => $verdict,
         parts      => \%parts,
     );
-    if ($verdict eq 'suspect' && ($parts{host} // 0) < 0 && !grep { $parts{$_} < 0 } grep { $_ ne 'host' } keys %parts) {
+    if ($verdict eq 'suspect' && ($parts{host} // 0) < 0 && !grep { ($parts{$_} // 0) < 0 } @IDENTITY_ATTRS) {
         $r{verdict} = 'new host';
         $r{host_changes_often} = host_changes_often($profile, $obs);
     }
@@ -222,11 +226,9 @@ sub host_changes_often {
 # Does a sighting agree with the accepted history on everything we compare
 # except the host? Attributes that either side never recorded are skipped,
 # so imported sightings are compared on the ident alone.
-my @SECOND_HOME_ATTRS = qw(ident realname version);
-
 sub matches_apart_from_host {
     my ($s, $accepted) = @_;
-    for my $attr (@SECOND_HOME_ATTRS) {
+    for my $attr (@IDENTITY_ATTRS) {
         next unless defined $s->{$attr};
         my @known = grep { defined $_->{$attr} } @$accepted;
         next unless @known;

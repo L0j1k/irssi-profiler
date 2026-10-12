@@ -103,6 +103,8 @@ subtest 'a new host is called out separately when nothing else contradicts' => s
 
     is(judge($history->(('host.example.net') x 20), { %elsewhere, ident => 'lol' })->{verdict},
         'suspect', 'a new ident as well is suspect');
+    is(judge($history->(('host.example.net') x 20), { %elsewhere, channel => '#elsewhere' })->{verdict},
+        'new host', 'an unusual channel says nothing about who it is');
 
     my $hopper = $history->((('host.example.net') x 15), map { "hop$_.example.net" } 1 .. 5);
     $r = judge($hopper, \%elsewhere);

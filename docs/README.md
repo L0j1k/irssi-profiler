@@ -103,7 +103,8 @@ match`, and that's what the rules' `min_trust` is compared to. The verdict is:
   sighting is quarantined: kept, but left out of the history, so an
   impostor can't train the profile. The warning notes it if the join came
   during a netsplit rejoin.
-- **new host:** would be suspect, but only the host disagrees. Ident,
+- **new host:** would be suspect, but the host is what disagrees, and none
+  of ident, realname or client does. Channel and server don't count. Ident,
   realname and client (whichever we have) all match. This is usually the real
   person on another machine, a VPN or a proxy, so it gets a quiet line
   instead of a warning, like `bob: new host ~bob@x.example, ident matches
