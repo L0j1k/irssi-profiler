@@ -15,7 +15,8 @@ Rules live in `~/.irssi/scripts/profiler.rules`. See
 `config/profiler.rules.example` for the format. Run `/profiler reload` after
 editing.
 
-Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`.
+Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
+`/profiler suspects`, `/profiler accept <nick>`, `/profiler reject <nick>`.
 
 ## What happens on a join
 
@@ -37,23 +38,54 @@ Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`.
 
 ## Scoring
 
-Trust is a weighted average of how familiar each attribute is:
+The question is "is this really the person who has been using this nick?"
+Each nick keeps a log of its last 200 sightings. Older sightings count for less
+and less, losing half their weight every `profiler_half_life_days` (default 90).
 
-| attribute | weight |
-|-----------|--------|
-| host      | 0.30   |
-| ident     | 0.20   |
-| realname  | 0.20   |
-| channel   | 0.10   |
-| server    | 0.10   |
-| version   | 0.10   |
+Each attribute of a join scores from -1 to +1 against that history:
 
-Familiarity is `count / (count + 3)`: seen 3 times scores 0.5, 9 times 0.75,
-and it never quite reaches 1. For the host, a past sighting from the same /24
-(IPv4) or /64 (IPv6) counts as half a sighting. A host flagged as a likely
-proxy earns no host credit at all. For the version, a past reply from the same
-client (the first word, so `irssi v1.4.5` and `irssi v1.4.6` match) counts as
-half a sighting. Version weighs little because it's trivial to fake.
+- **Matches:** `familiarity(weight of matching sightings)`, where familiarity
+  is `w / (w + 3)`. A past sighting from the same /24 or /64 counts as half a
+  match. So does a reply from the same client at another version (`irssi
+  v1.4.5` vs `v1.4.6`).
+- **Contradicts:** `-(stability × familiarity(total weight))`. Stability is
+  how dominant the usual value has been. Breaking an ident used every time
+  costs a lot, while a new ident from someone whose ident always changes
+  costs almost nothing.
+- **Missing on either side:** skipped. History imported from logs has no
+  realname, server or version.
+- **Host on a likely proxy:** skipped too, since many people share those.
+
+The weights are lopsided on purpose. Ident, realname and version are visible
+to anyone, so an impostor can copy them. Matching them proves little, and
+failing to match is telling. A host is hard to fake.
+
+| attribute | weight if it matches | weight if it contradicts |
+|-----------|----------------------|--------------------------|
+| host      | 0.40                 | 0.35                     |
+| ident     | 0.10                 | 0.25                     |
+| realname  | 0.10                 | 0.25                     |
+| version   | 0.05                 | 0.15                     |
+| server    | 0.05                 | 0.05                     |
+| channel   | 0.10                 | 0.05                     |
+
+**match** is the weighted average of the attribute scores. **confidence** is
+the familiarity of the total sighting weight. **trust** is `confidence ×
+match`, and that's what the rules' `min_trust` is compared to. The verdict is:
+
+- **unknown:** confidence under 0.5, about three fresh sightings.
+- **suspect:** match below 0. Always warned about, whatever the rules say. The
+  sighting is quarantined: kept, but left out of the history, so an
+  impostor can't train the profile. The warning notes it if the join came
+  during a netsplit rejoin.
+- **mixed:** match from 0 to 0.25. Typical of the real person on a new ISP,
+  or a careful impostor who copied everything except the host. The two
+  can't be told apart.
+- **consistent:** everything above that.
+
+Quarantine needs nothing from you. When you have time, `/profiler suspects`
+lists quarantined sightings. `/profiler accept <nick>` lets them count (they
+really did move), and `/profiler reject <nick>` files them away.
 
 ## Limits
 

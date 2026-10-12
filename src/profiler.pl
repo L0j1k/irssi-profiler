@@ -119,6 +119,9 @@ sub on_join {
     if (!$queue->add($rkey, $job, $now) && $queue->length >= Irssi::settings_get_int('profiler_queue_max')) {
         info("whois queue on $server->{tag} is full, not profiling $nick in $channel");
     }
+    # Riding a netsplit back in is the classic way to grab someone's nick, so
+    # a suspect verdict says so when the join came in a burst.
+    $job->{netsplit} = $queue->paused($now) ? 1 : 0;
 }
 
 sub tick {
@@ -271,11 +274,12 @@ sub judge {
     my $now = time;
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
 
-    my ($trust, $parts, $profile);
+    local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
+    my ($r, $profile);
     eval {
         $profile = $store->profile($job->{tag}, $job->{nick});
-        ($trust, $parts) = Profiler::Score::trust($profile, $obs);
-        $store->record($job->{tag}, $obs, $now);
+        $r = Profiler::Score::judge($profile, $obs, $now);
+        $store->record($job->{tag}, $obs, $now, $r->{verdict});
         $store->save($job->{tag});
         1;
     } or return info($@);
@@ -288,16 +292,26 @@ sub judge {
     };
 
     my $who = "$job->{nick} ($job->{ident}\@$job->{host}, client: $job->{version})";
-    my $seen = $profile ? "seen $profile->{sightings} time(s) before" : 'never seen before';
+    my $count = $profile ? scalar(Profiler::Score::history($profile)) : 0;
+    my $seen = $count ? "seen $count time(s) before" : 'never seen before';
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
-    my $score = sprintf('%.2f', $trust);
+    my $score = sprintf('trust %+.2f (%s, match %+.2f, confidence %.2f)',
+        @$r{qw(trust verdict match confidence)});
+    my $why = join ' ', map { sprintf('%s=%+.2f', $_, $r->{parts}{$_}) } sort keys %{ $r->{parts} };
+    $why = " [$why]" if $why;
 
-    if ($trust < $min) {
-        my $why = join ' ', map { sprintf('%s=%.2f', $_, $parts->{$_}) } sort keys %$parts;
-        $say->("WARNING $who has trust $score, under $min; $seen" . ($why ? " [$why]" : ''));
+    # Suspects are always shown, whatever the rules say, since they are the
+    # whole point: an established nick being worn by somebody else.
+    if ($r->{verdict} eq 'suspect') {
+        my $when = $job->{netsplit} ? ' during a netsplit rejoin' : '';
+        $say->("SUSPECT $who doesn't match the history of $job->{nick}$when; $score, $seen$why. "
+            . "Quarantined; /profiler accept $job->{nick} if it's really them");
+    }
+    elsif ($r->{trust} < $min) {
+        $say->("WARNING $who has $score, under $min; $seen$why");
     }
     elsif (Irssi::settings_get_bool('profiler_verbose')) {
-        $say->("$who has trust $score; $seen");
+        $say->("$who has $score; $seen");
     }
 
     if ($hostinfo->{proxy}) {
@@ -329,16 +343,45 @@ sub cmd_profiler {
         my $p = eval { $store->profile($server->{tag}, $arg) };
         return info($@) if $@;
         return info("no profile for $arg on $server->{tag}") unless $p;
-        info("$p->{nick} on $server->{tag}: $p->{sightings} sighting(s), first "
+
+        my @history = Profiler::Score::history($p);
+        my $held = @{ $p->{sightings} } - @history;
+        info("$p->{nick} on $server->{tag}: " . scalar(@history) . " sighting(s)"
+            . ($held ? ", $held quarantined" : '') . ", first "
             . localtime($p->{first_seen}) . ", last " . localtime($p->{last_seen}));
-        for my $table (qw(hosts ips idents realnames servers channels versions)) {
-            my $counts = $p->{$table} or next;
-            info("  $table: " . join(', ', map { "$_ x$counts->{$_}" }
-                sort { $counts->{$b} <=> $counts->{$a} } keys %$counts));
+        for my $field (qw(host ip ident realname server version channel)) {
+            my %counts;
+            $counts{ $_->{$field} }++ for grep { defined $_->{$field} } @history;
+            next unless %counts;
+            info("  $field: " . join(', ', map { "$_ x$counts{$_}" }
+                sort { $counts{$b} <=> $counts{$a} } keys %counts));
         }
     }
+    elsif ($subcmd eq 'suspects') {
+        return info("/profiler suspects needs an active server") unless $server;
+        my @found = eval { $store->suspects($server->{tag}) };
+        return info($@) if $@;
+        info("no suspect sightings waiting on $server->{tag}") unless @found;
+        for my $f (@found) {
+            my $s = $f->{sighting};
+            info(sprintf('%s  %s in %s as %s@%s, client: %s', scalar localtime($s->{time}), $f->{nick},
+                $s->{channel} // '?', $s->{ident} // '?', $s->{host} // '?', $s->{version} // '?'));
+        }
+    }
+    elsif (($subcmd eq 'accept' || $subcmd eq 'reject') && length $arg) {
+        return info("/profiler $subcmd needs an active server") unless $server;
+        my $n = eval {
+            my $count = $subcmd eq 'accept' ? $store->accept($server->{tag}, $arg) : $store->reject($server->{tag}, $arg);
+            $store->save($server->{tag});
+            $count;
+        };
+        return info($@) if $@;
+        info($subcmd eq 'accept'
+            ? "$n suspect sighting(s) of $arg now count toward their history"
+            : "$n suspect sighting(s) of $arg stay quarantined");
+    }
     else {
-        info("usage: /profiler [list|reload|show <nick>]");
+        info("usage: /profiler [list|reload|show <nick>|suspects|accept <nick>|reject <nick>]");
     }
 }
 
@@ -353,6 +396,7 @@ Irssi::settings_add_int('profiler', 'profiler_recheck', 600);
 Irssi::settings_add_int('profiler', 'profiler_hostinfo_max_age', 7 * 24 * 3600);
 Irssi::settings_add_int('profiler', 'profiler_lookup_timeout', 20);
 Irssi::settings_add_int('profiler', 'profiler_version_timeout', 10);
+Irssi::settings_add_int('profiler', 'profiler_half_life_days', 90);
 Irssi::settings_add_bool('profiler', 'profiler_verbose', 0);
 
 Irssi::signal_add('message join', \&on_join);

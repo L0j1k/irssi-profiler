@@ -11,25 +11,27 @@ use JSON::PP;
 #     {
 #       "users": {
 #         "<lowercased nick>": {
-#           "nick": "Bob", "first_seen": ..., "last_seen": ..., "sightings": N,
-#           "hosts": {"<host>": count}, "ips": {...}, "idents": {...},
-#           "realnames": {...}, "servers": {...}, "channels": {...},
-#           "versions": {...}
+#           "nick": "Bob", "first_seen": ..., "last_seen": ...,
+#           "sightings": [
+#             { "time": ..., "host": ..., "ip": ..., "ident": ..., "realname": ...,
+#               "server": ..., "version": ..., "channel": ..., "proxy": ...,
+#               "verdict": "consistent", "quarantined": 0, "reviewed": 0 },
+#             ...
+#           ]
 #         }
 #       },
 #       "hostinfo": { "<host>": { "checked": time, "ip": ..., "proxy": ... } }
 #     }
+#
+# A sighting judged "suspect" is quarantined: kept for the record but left out
+# of the history its nick is judged against, so an impostor can't train the
+# profile toward themselves. /profiler accept or reject marks it reviewed.
 
-# Observation fields and the profile tables that count them.
-my %TABLES = (
-    host     => 'hosts',
-    ip       => 'ips',
-    ident    => 'idents',
-    realname => 'realnames',
-    server   => 'servers',
-    channel  => 'channels',
-    version  => 'versions',
-);
+# Observation fields kept in each sighting. Missing ones are left out.
+my @FIELDS = qw(host ip ident realname server version channel proxy);
+
+# Sightings kept per nick. The oldest go first.
+our $MAX_SIGHTINGS = 200;
 
 my $JSON = JSON::PP->new->canonical->pretty;
 
@@ -74,20 +76,58 @@ sub profile {
 }
 
 sub record {
-    my ($self, $network, $obs, $now) = @_;
+    my ($self, $network, $obs, $now, $verdict) = @_;
     my $users = $self->net($network)->{users};
-    my $p = $users->{ lc $obs->{nick} } //= { first_seen => $now, sightings => 0 };
+    my $p = $users->{ lc $obs->{nick} } //= { first_seen => $now, sightings => [] };
+
+    my %sighting = map { defined $obs->{$_} ? ($_ => $obs->{$_}) : () } @FIELDS;
+    $sighting{channel} = lc $sighting{channel} if defined $sighting{channel};
+    $sighting{time} = $now;
+    $sighting{verdict} = $verdict;
+    $sighting{quarantined} = $verdict eq 'suspect' ? 1 : 0;
 
     $p->{nick} = $obs->{nick};
     $p->{last_seen} = $now;
-    $p->{sightings}++;
-    for my $field (keys %TABLES) {
-        my $value = $obs->{$field};
-        next unless defined $value;
-        $value = lc $value if $field eq 'channel';
-        $p->{ $TABLES{$field} }{$value}++;
-    }
+    push @{ $p->{sightings} }, \%sighting;
+    splice @{ $p->{sightings} }, 0, @{ $p->{sightings} } - $MAX_SIGHTINGS
+        if @{ $p->{sightings} } > $MAX_SIGHTINGS;
     return $p;
+}
+
+# Quarantined sightings nobody has looked at yet, oldest first, each as
+# { nick => ..., sighting => ... }.
+sub suspects {
+    my ($self, $network) = @_;
+    my @found;
+    for my $p (values %{ $self->net($network)->{users} }) {
+        push @found, map { { nick => $p->{nick}, sighting => $_ } }
+            grep { $_->{quarantined} && !$_->{reviewed} } @{ $p->{sightings} };
+    }
+    return sort { $a->{sighting}{time} <=> $b->{sighting}{time} } @found;
+}
+
+# Let a nick's unreviewed suspect sightings count after all, say because they
+# really did move. Returns how many changed.
+sub accept {
+    my ($self, $network, $nick) = @_;
+    return $self->review($network, $nick, 0);
+}
+
+# Agree that a nick's unreviewed suspect sightings were someone else.
+sub reject {
+    my ($self, $network, $nick) = @_;
+    return $self->review($network, $nick, 1);
+}
+
+sub review {
+    my ($self, $network, $nick, $quarantined) = @_;
+    my $p = $self->profile($network, $nick) or return 0;
+    my @pending = grep { $_->{quarantined} && !$_->{reviewed} } @{ $p->{sightings} };
+    for my $s (@pending) {
+        $s->{quarantined} = $quarantined;
+        $s->{reviewed} = 1;
+    }
+    return scalar @pending;
 }
 
 sub set_hostinfo {

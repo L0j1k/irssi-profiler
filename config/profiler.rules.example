@@ -3,13 +3,14 @@
 #
 #   <network> <channel[,channel...]> <min_trust>
 #
-# Warn when someone joins one of those channels with a trust score (0 to 1)
-# under min_trust. "*" in the network or channel field means "any". When
+# Warn when someone joins one of those channels with a trust score under
+# min_trust (0 to 1). "*" in the network or channel field means "any". When
 # several lines cover a channel, the highest min_trust wins.
 #
-# Roughly: a nick seen 3 times before in the same channel with the same host,
-# ident, realname, server and client scores 0.5, 9 times scores 0.75. A nick
-# never seen before scores 0.
+# Trust runs from -1 (wearing somebody else's nick) to 1. Roughly: a nick seen
+# the same way 3 times recently scores 0.25, 10 times 0.59, 20 times 0.76. A
+# nick never seen before scores 0. Joins that contradict an established nick
+# go negative and are always warned about, whatever min_trust says.
 #
 #   proxy <keyword or phrase>
 #

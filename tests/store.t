@@ -25,28 +25,65 @@ subtest 'recording and reloading sightings' => sub {
     my $store = Profiler::Store->new($dir);
 
     is($store->profile('EFnet', 'bob'), undef, 'unknown nick');
-    $store->record('EFnet', \%obs, 1000);
-    $store->record('EFnet', { %obs, realname => undef, server => undef }, 2000);
+    $store->record('EFnet', \%obs, 1000, 'unknown');
+    $store->record('EFnet', { %obs, realname => undef, server => undef }, 2000, 'consistent');
     $store->save('EFnet');
 
     ok(-f "$dir/efnet.json", 'one file per network, lowercased');
 
     my $p = Profiler::Store->new($dir)->profile('efnet', 'BOB');
     is($p->{nick}, 'Bob', 'display nick kept');
-    is($p->{sightings}, 2, 'sightings');
     is($p->{first_seen}, 1000, 'first seen');
     is($p->{last_seen}, 2000, 'last seen');
-    is($p->{hosts}{'host.example.net'}, 2, 'host count');
-    is($p->{ips}{'10.10.10.2'}, 2, 'ip count');
-    is($p->{realnames}{'Bob Smith'}, 1, 'missing values are not counted');
-    is($p->{channels}{'#chan'}, 2, 'channels lowercased');
-    is($p->{versions}{'irssi v1.4.5'}, 2, 'client versions counted');
+    is(scalar @{ $p->{sightings} }, 2, 'two sightings');
+
+    my ($first, $second) = @{ $p->{sightings} };
+    is($first->{time}, 1000, 'time');
+    is($first->{channel}, '#chan', 'channel lowercased');
+    is($first->{verdict}, 'unknown', 'verdict kept');
+    ok(!$first->{quarantined}, 'not quarantined');
+    ok(!exists $second->{realname}, 'missing values are left out');
+    ok(!exists $first->{nick}, 'nick is not repeated in every sighting');
+};
+
+subtest 'suspect sightings are quarantined until reviewed' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->record('efnet', \%obs, 1000, 'consistent');
+    $store->record('efnet', { %obs, ident => 'lol' }, 2000, 'suspect');
+    $store->record('efnet', { %obs, nick => 'Carol', ident => 'x' }, 3000, 'suspect');
+
+    my @s = $store->suspects('efnet');
+    is_deeply([ map { "$_->{nick}\@$_->{sighting}{time}" } @s ], ['Bob@2000', 'Carol@3000'], 'listed oldest first');
+    ok($store->profile('efnet', 'bob')->{sightings}[1]{quarantined}, 'quarantined');
+
+    is($store->accept('efnet', 'BOB'), 1, 'accept reports how many');
+    my $accepted = $store->profile('efnet', 'bob')->{sightings}[1];
+    ok(!$accepted->{quarantined}, 'accepted sighting now counts');
+    ok($accepted->{reviewed}, 'and is marked reviewed');
+
+    is($store->reject('efnet', 'carol'), 1, 'reject reports how many');
+    my $rejected = $store->profile('efnet', 'carol')->{sightings}[0];
+    ok($rejected->{quarantined} && $rejected->{reviewed}, 'rejected stays out, reviewed');
+
+    is_deeply([ $store->suspects('efnet') ], [], 'nothing left to review');
+    is($store->accept('efnet', 'nobody'), 0, 'unknown nick is a no-op');
+};
+
+subtest 'history is capped, dropping the oldest' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    local $Profiler::Store::MAX_SIGHTINGS = 3;
+    $store->record('efnet', \%obs, $_, 'consistent') for 1 .. 5;
+    my $p = $store->profile('efnet', 'bob');
+    is_deeply([ map { $_->{time} } @{ $p->{sightings} } ], [3, 4, 5], 'last three kept');
+    is($p->{first_seen}, 1, 'first seen survives the cap');
 };
 
 subtest 'odd network names make safe file names' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);
-    $store->record('../My Net', \%obs, 1);
+    $store->record('../My Net', \%obs, 1, 'unknown');
     $store->save('../My Net');
     ok(-f "$dir/.._my_net.json", 'slashes and spaces replaced');
 };
@@ -70,7 +107,7 @@ subtest 'a corrupt file is reported and never overwritten' => sub {
     eval { $store->profile('efnet', 'bob') };
     like($@, qr/cannot parse .*efnet\.json/, 'load error names the file');
 
-    eval { $store->record('efnet', \%obs, 1) };
+    eval { $store->record('efnet', \%obs, 1, 'unknown') };
     like($@, qr/cannot parse/, 'still refuses on later use');
     eval { $store->save('efnet') };
     like($@, qr/cannot parse/, 'save refuses too');
