@@ -205,9 +205,12 @@ sub judge {
 # Returns the sightings to promote, or an empty list.
 sub promotable {
     my ($profile, $min_count, $min_days) = @_;
-    my @sightings = sort { $a->{time} <=> $b->{time} } @{ $profile->{sightings} // [] };
+    # Checked before sorting because this runs on every join and almost
+    # nobody has anything waiting in quarantine.
+    return () unless grep { $_->{quarantined} && !$_->{reviewed} } @{ $profile->{sightings} // [] };
+
+    my @sightings = sort { $a->{time} <=> $b->{time} } @{ $profile->{sightings} };
     my @held = grep { $_->{quarantined} && !$_->{reviewed} } @sightings;
-    return () unless @held;
 
     my $latest = $held[-1];
     my @agreeing = grep { similarity('host', $_, $latest) > 0 } @held;
