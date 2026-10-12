@@ -148,6 +148,51 @@ subtest 'quarantined sightings do not count' => sub {
     is(judge($p, \%troll)->{verdict}, 'suspect', 'troll does not train the profile');
 };
 
+subtest 'hosts in the same dynamic ISP pool are near matches' => sub {
+    my $p = profile_of(5, with => { host => 'cpe-198-51-100-202.san.res.rr.com', ip => undef });
+    my %obs = (%bob, ip => undef);
+    my $pool = judge($p, { %obs, host => 'cpe-203-0-113-17.san.res.rr.com' })->{parts}{host};
+    my $exact = judge($p, { %obs, host => 'cpe-198-51-100-202.san.res.rr.com' })->{parts}{host};
+    ok($pool > 0 && $pool < $exact, "pool $pool between 0 and exact $exact");
+    ok(judge($p, { %obs, host => 'cpe-203-0-113-17.nyc.res.rr.com' })->{parts}{host} < 0, 'another pool contradicts');
+
+    ok(Profiler::Score::same_pool('d203-0-113-220.bchsia.telus.net', 'd203-0-113-9.bchsia.telus.net'), 'telus');
+    ok(!Profiler::Score::same_pool('bob.users.example.net', 'troll.users.example.net'), 'named vhosts are not a pool');
+    ok(!Profiler::Score::same_pool('a1.example', 'b2.example'), 'needs more than a bare domain');
+    ok(!Profiler::Score::same_pool('cpe-1.example.net', 'cpe-1.example.net.evil'), 'rest must match exactly');
+};
+
+subtest 'promotable: a new habit that stuck while the old one went quiet' => sub {
+    my $day = sub { $NOW + $_[0] * $DAY };
+    my %new = (%bob, host => 'new.isp.example', ip => '198.51.100.7');
+    my $moved = sub {
+        my (@quarantined_days) = @_;
+        return { sightings => [
+            (map { { %bob, time => $day->($_) } } 0 .. 19),
+            (map { { %new, time => $day->($_), quarantined => 1 } } @quarantined_days),
+        ] };
+    };
+    my $n = sub { my @p = Profiler::Score::promotable($_[0], 5, 7); scalar @p };
+
+    is($n->($moved->(20, 22, 24, 26, 28)), 5, 'five over eight days get promoted');
+    is($n->($moved->(20, 21, 22, 23, 24)), 0, 'not if it spans under seven days');
+    is($n->($moved->(20, 23, 26, 29)), 0, 'not with only four');
+
+    my $back = $moved->(20, 22, 24, 26, 28);
+    push @{ $back->{sightings} }, { %bob, time => $day->(25) };
+    is($n->($back), 0, 'not if the old habit showed up in between');
+
+    my $scattered = $moved->(20, 22, 24, 26, 28);
+    my $i = 0;
+    $_->{quarantined} and $_->{host} = 'troll' . $i++ . '.example' and $_->{ip} = "203.0.$i.1"
+        for @{ $scattered->{sightings} };
+    is($n->($scattered), 0, 'not if the quarantined sightings disagree with each other');
+
+    my $reviewed = $moved->(20, 22, 24, 26, 28);
+    $_->{quarantined} and $_->{reviewed} = 1 for @{ $reviewed->{sightings} };
+    is($n->($reviewed), 0, 'rejected sightings stay rejected');
+};
+
 subtest 'same_subnet' => sub {
     ok(Profiler::Score::same_subnet('10.10.10.2', '10.10.10.3'), 'same /24');
     ok(!Profiler::Score::same_subnet('10.10.10.2', '10.10.11.2'), 'different /24');

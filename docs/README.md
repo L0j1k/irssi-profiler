@@ -66,7 +66,9 @@ Each attribute of a join scores from -1 to +1 against that history:
 
 - **Matches:** `familiarity(weight of matching sightings)`, where familiarity
   is `w / (w + 3)`. A past sighting from the same /24 or /64 counts as half a
-  match. So does a reply from the same client at another version (`irssi
+  match. So does one from the same dynamic ISP pool, meaning host names that
+  differ only in a first label with digits in it
+  (`cpe-198-51-100-202.san.res.rr.com` vs `cpe-203-0-113-17.san.res.rr.com`). So does a reply from the same client at another version (`irssi
   v1.4.5` vs `v1.4.6`).
 - **Contradicts:** `-(stability × familiarity(total weight))`. Stability is
   how dominant the usual value has been. Breaking an ident used every time
@@ -102,6 +104,15 @@ match`, and that's what the rules' `min_trust` is compared to. The verdict is:
   or a careful impostor who copied everything except the host. The two
   can't be told apart.
 - **consistent:** everything above that.
+
+Someone who really moved would otherwise stay suspect for months, since
+their new host never enters the history. So when a nick's quarantined
+sightings agree with each other, number at least
+`profiler_promote_after_sightings` (5) over at least
+`profiler_promote_after_days` (7), and the old habit hasn't shown up since,
+they're promoted: they count, and a line says the nick looks like it moved.
+A troll wearing a nick while its owner keeps turning up as usual never gets
+promoted.
 
 Quarantine needs nothing from you. When you have time, `/profiler suspects`
 lists quarantined sightings. `/profiler accept <nick>` lets them count (they

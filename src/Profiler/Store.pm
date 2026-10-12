@@ -5,6 +5,8 @@ use warnings;
 
 use JSON::XS;
 
+use Profiler::Score;
+
 # One JSON file per network in the data directory, loaded the first time that
 # network is used and kept in memory after that. Each file looks like:
 #
@@ -132,6 +134,23 @@ sub review {
         $s->{reviewed} = 1;
     }
     return scalar @pending;
+}
+
+# If the nick's quarantined sightings look like they moved rather than like
+# an impostor (see Profiler::Score::promotable), let them count. They are
+# marked promoted, so a later look at the file can tell them apart from
+# hand-accepted ones. Returns how many were promoted.
+sub promote_if_moved {
+    my ($self, $network, $nick, $now, $min_count, $min_days) = @_;
+    my $p = $self->profile($network, $nick) or return 0;
+    my @moved = Profiler::Score::promotable($p, $min_count, $min_days);
+    for my $s (@moved) {
+        $s->{quarantined} = 0;
+        $s->{reviewed} = 1;
+        $s->{promoted} = $now;
+    }
+    $self->{dirty}{ lc $network } = 1 if @moved;
+    return scalar @moved;
 }
 
 sub set_hostinfo {

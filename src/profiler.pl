@@ -275,11 +275,15 @@ sub judge {
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
 
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
-    my ($r, $profile);
+    my ($r, $count, $promoted);
     eval {
-        $profile = $store->profile($job->{tag}, $job->{nick});
+        my $profile = $store->profile($job->{tag}, $job->{nick});
+        $count = $profile ? scalar(Profiler::Score::history($profile)) : 0;
         $r = Profiler::Score::judge($profile, $obs, $now);
         $store->record($job->{tag}, $obs, $now, $r->{verdict});
+        $promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
+            Irssi::settings_get_int('profiler_promote_after_sightings'),
+            Irssi::settings_get_int('profiler_promote_after_days'));
         1;
     } or return info($@);
 
@@ -291,7 +295,6 @@ sub judge {
     };
 
     my $who = "$job->{nick} ($job->{ident}\@$job->{host}, client: $job->{version})";
-    my $count = $profile ? scalar(Profiler::Score::history($profile)) : 0;
     my $seen = $count ? "seen $count time(s) before" : 'never seen before';
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
     my $score = sprintf('trust %+.2f (%s, match %+.2f, confidence %.2f)',
@@ -311,6 +314,11 @@ sub judge {
     }
     elsif (Irssi::settings_get_bool('profiler_verbose')) {
         $say->("$who has $score; $seen");
+    }
+
+    if ($promoted) {
+        $say->("$job->{nick} looks like they moved: $promoted quarantined sighting(s) like this one "
+            . "now count toward their history. /profiler show $job->{nick} to check");
     }
 
     if ($hostinfo->{proxy}) {
@@ -404,6 +412,8 @@ Irssi::settings_add_int('profiler', 'profiler_hostinfo_max_age', 7 * 24 * 3600);
 Irssi::settings_add_int('profiler', 'profiler_lookup_timeout', 20);
 Irssi::settings_add_int('profiler', 'profiler_version_timeout', 10);
 Irssi::settings_add_int('profiler', 'profiler_half_life_days', 90);
+Irssi::settings_add_int('profiler', 'profiler_promote_after_sightings', $Profiler::Score::PROMOTE_AFTER_SIGHTINGS);
+Irssi::settings_add_int('profiler', 'profiler_promote_after_days', $Profiler::Score::PROMOTE_AFTER_DAYS);
 Irssi::settings_add_bool('profiler', 'profiler_verbose', 0);
 
 Irssi::signal_add('message join', \&on_join);

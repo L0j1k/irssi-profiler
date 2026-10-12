@@ -16,6 +16,13 @@
 #   --recheck         skip a rejoin of the same channel within this many
 #                     seconds (default 600, same as the live script)
 #   --half-life-days  how fast old sightings fade (default 90)
+#   --promote-after-sightings, --promote-after-days
+#                     when quarantined sightings count as a move instead of an
+#                     impostor (default 5 sightings over 7 days)
+#
+# Keep these in step with the live script's settings
+# (profiler_half_life_days, profiler_promote_after_*), or imported verdicts
+# won't match what the live script would have decided.
 #
 # Progress goes to stderr, one line per month. Malformed join lines are counted
 # and the first few are shown at the end.
@@ -48,8 +55,15 @@ sub usage {
     exit 2;
 }
 
-my %opt = (recheck => 600, 'half-life-days' => 90, out => "$FindBin::Bin/../build/profiler-data");
-GetOptions(\%opt, 'logs=s', 'network=s', 'out=s', 'recheck=i', 'half-life-days=i', 'help|h') or usage();
+my %opt = (
+    recheck                   => 600,
+    'half-life-days'          => 90,
+    'promote-after-sightings' => $Profiler::Score::PROMOTE_AFTER_SIGHTINGS,
+    'promote-after-days'      => $Profiler::Score::PROMOTE_AFTER_DAYS,
+    out                       => "$FindBin::Bin/../build/profiler-data",
+);
+GetOptions(\%opt, 'logs=s', 'network=s', 'out=s', 'recheck=i', 'half-life-days=i',
+    'promote-after-sightings=i', 'promote-after-days=i', 'help|h') or usage();
 usage() if $opt{help} || !$opt{logs};
 
 die "no log directory at $opt{logs}\n" unless -d $opt{logs};
@@ -68,12 +82,15 @@ my $stats = Profiler::Import::replay(
     logs     => $opt{logs},
     recheck  => $opt{recheck},
     on_month => sub { print STDERR "$_[0]\n" },
+    promote_after_sightings => $opt{'promote-after-sightings'},
+    promote_after_days      => $opt{'promote-after-days'},
 );
 $store->save($network);
 
 my $v = $stats->{verdicts};
 printf "replayed %d joins in %ds (%d quick rejoins skipped)\n", $stats->{joins}, time - $started, $stats->{repeats};
 printf "verdicts: %s\n", join(', ', map { "$_ " . ($v->{$_} // 0) } qw(unknown consistent mixed suspect));
+printf "%d quarantined sighting(s) later promoted as moves\n", $stats->{promoted};
 if ($stats->{unparsed}) {
     print "$stats->{unparsed} join line(s) could not be parsed, for example:\n";
     print "  $_\n" for @{ $stats->{unparsed_examples} };

@@ -52,6 +52,11 @@ our $MIN_CONFIDENCE = 0.5;
 # A match at or above this is "consistent". From 0 up to it is "mixed".
 our $CONSISTENT_AT = 0.25;
 
+# Defaults for promotable(): how many agreeing quarantined sightings, over how
+# many days, before we decide someone moved rather than got impersonated.
+our $PROMOTE_AFTER_SIGHTINGS = 5;
+our $PROMOTE_AFTER_DAYS = 7;
+
 my %PREFIX = (4 => 24, 6 => 64);
 
 sub familiarity {
@@ -75,6 +80,18 @@ sub same_subnet {
     return $net->contains($ipb) ? 1 : 0;
 }
 
+# Two host names from the same dynamic ISP pool, like
+# cpe-198-51-100-202.san.res.rr.com and cpe-203-0-113-17.san.res.rr.com: they
+# differ only in the first label, and both first labels have digits in them.
+# Requiring digits keeps named hosts out, so bob.users.example.net and
+# troll.users.example.net are not treated as neighbors.
+sub same_pool {
+    my ($a, $b) = @_;
+    my ($first_a, $rest_a) = $a =~ /^([^.]+)\.(.+\..+)$/ or return 0;
+    my ($first_b, $rest_b) = $b =~ /^([^.]+)\.(.+\..+)$/ or return 0;
+    return $rest_a eq $rest_b && $first_a =~ /\d/ && $first_b =~ /\d/ ? 1 : 0;
+}
+
 sub age_weight {
     my ($sighting, $now) = @_;
     my $age = max(0, $now - $sighting->{time});
@@ -93,9 +110,11 @@ sub similarity {
     my ($attr, $seen, $obs) = @_;
     if ($attr eq 'host') {
         return 1 if $seen->{host} eq $obs->{host};
-        return 0 unless defined $seen->{ip} && defined $obs->{ip};
-        return 1 if $seen->{ip} eq $obs->{ip};
-        return same_subnet($seen->{ip}, $obs->{ip}) ? $SUBNET_CREDIT : 0;
+        if (defined $seen->{ip} && defined $obs->{ip}) {
+            return 1 if $seen->{ip} eq $obs->{ip};
+            return $SUBNET_CREDIT if same_subnet($seen->{ip}, $obs->{ip});
+        }
+        return same_pool($seen->{host}, $obs->{host}) ? $SUBNET_CREDIT : 0;
     }
     return 1 if $seen->{$attr} eq $obs->{$attr};
     if ($attr eq 'version') {
@@ -172,6 +191,30 @@ sub judge {
         verdict    => $verdict,
         parts      => \%parts,
     };
+}
+
+# When someone really moves (new ISP, new bouncer), every join from the new
+# host contradicts the old history and gets quarantined, and since quarantined
+# sightings never join the history, they'd stay suspect for months. So we
+# look for the shape of a move: the newest unreviewed quarantined sightings
+# agree with each other on the host, there are at least $min_count of them
+# spread over at least $min_days, and nothing from the old habit has shown up
+# since the first of them. A troll wearing the nick while its owner keeps
+# turning up as usual never fits that shape.
+#
+# Returns the sightings to promote, or an empty list.
+sub promotable {
+    my ($profile, $min_count, $min_days) = @_;
+    my @sightings = sort { $a->{time} <=> $b->{time} } @{ $profile->{sightings} // [] };
+    my @held = grep { $_->{quarantined} && !$_->{reviewed} } @sightings;
+    return () unless @held;
+
+    my $latest = $held[-1];
+    my @agreeing = grep { similarity('host', $_, $latest) > 0 } @held;
+    return () if @agreeing < $min_count;
+    return () if $latest->{time} - $agreeing[0]{time} < $min_days * 86400;
+    return () if grep { !$_->{quarantined} && $_->{time} > $agreeing[0]{time} } @sightings;
+    return @agreeing;
 }
 
 1;

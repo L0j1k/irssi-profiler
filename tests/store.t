@@ -7,6 +7,7 @@ use lib "$FindBin::Bin/../src";
 use File::Temp qw(tempdir);
 use Test::More;
 
+use Profiler::Score;
 use Profiler::Store;
 
 my %obs = (
@@ -68,6 +69,39 @@ subtest 'suspect sightings are quarantined until reviewed' => sub {
 
     is_deeply([ $store->suspects('efnet') ], [], 'nothing left to review');
     is($store->accept('efnet', 'nobody'), 0, 'unknown nick is a no-op');
+};
+
+subtest 'someone who moved stops being suspect within about a week' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    my ($t, %verdicts, @promoted) = (1_600_000_000);
+
+    # Daily joins from one host for 100 days, then from another ISP for 100.
+    for my $d (0 .. 199) {
+        my $obs = { nick => 'bob', ident => '~bob', channel => '#c',
+            host => $d < 100 ? 'cpe-1-2-3-4.sd.res.rr.com' : 'pool-9-8-7-6.nyc.fios.verizon.net' };
+        my $now = $t + $d * 86400;
+        my $r = Profiler::Score::judge($store->profile('n', 'bob'), $obs, $now);
+        $store->record('n', $obs, $now, $r->{verdict});
+        if (my $n = $store->promote_if_moved('n', 'bob', $now, 5, 7)) { push @promoted, $n }
+        $verdicts{$r->{verdict}}++ if $d >= 100;
+    }
+    ok($verdicts{suspect} <= 8, "suspect for $verdicts{suspect} days after the move");
+    is(scalar @promoted, 1, 'promoted once');
+    is($promoted[0], $verdicts{suspect}, 'every quarantined sighting promoted');
+
+    my @s = grep { $_->{promoted} } @{ $store->profile('n', 'bob')->{sightings} };
+    ok(!grep({ $_->{quarantined} || !$_->{reviewed} } @s), 'promoted sightings count and are marked reviewed');
+    is_deeply([ $store->suspects('n') ], [], 'nothing left to review');
+};
+
+subtest 'promotion marks the network dirty only when it happens' => sub {
+    my $store = Profiler::Store->new(tempdir(CLEANUP => 1));
+    $store->record('n', \%obs, 1, 'consistent');
+    $store->save_dirty;
+    is($store->promote_if_moved('n', 'bob', 2, 5, 7), 0, 'nothing to promote');
+    is($store->promote_if_moved('n', 'nobody', 2, 5, 7), 0, 'unknown nick');
+    is_deeply([ $store->save_dirty ], [], 'still clean');
 };
 
 subtest 'history is capped, dropping the oldest' => sub {

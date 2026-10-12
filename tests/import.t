@@ -57,6 +57,7 @@ subtest 'replaying a log directory' => sub {
     is($stats->{unparsed}, 1, 'malformed join line counted');
     like($stats->{unparsed_examples}[0], qr/broken/, 'and shown');
     is($stats->{verdicts}{suspect}, 1, 'one suspect');
+    is($stats->{promoted}, 0, 'a single impostor join is not a move');
     is_deeply(\@months, ['2024-05'], 'progress per month');
 
     my $bob = $store->profile('efnet', 'bob');

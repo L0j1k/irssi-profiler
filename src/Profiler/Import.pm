@@ -73,13 +73,17 @@ sub channel_logs_by_day {
 #                    skipped, as in the live script
 #   on_month         optional callback, called with "YYYY-MM" as each month
 #                    starts, for progress output
+#   promote_after_sightings, promote_after_days
+#                    optional, see Profiler::Score::promotable
 #
-# Returns stats: joins, repeats, unparsed, unparsed_examples (up to 5 lines)
-# and verdicts (counts per verdict).
+# Returns stats: joins, repeats, promoted, unparsed, unparsed_examples (up to
+# 5 lines) and verdicts (counts per verdict).
 sub replay {
     my (%arg) = @_;
     my ($store, $network) = @arg{qw(store network)};
-    my %stats = (joins => 0, repeats => 0, unparsed => 0, unparsed_examples => [], verdicts => {});
+    my $promote_count = $arg{promote_after_sightings} // $Profiler::Score::PROMOTE_AFTER_SIGHTINGS;
+    my $promote_days = $arg{promote_after_days} // $Profiler::Score::PROMOTE_AFTER_DAYS;
+    my %stats = (joins => 0, repeats => 0, promoted => 0, unparsed => 0, unparsed_examples => [], verdicts => {});
     my %last_join;
     my $month = '';
 
@@ -127,6 +131,7 @@ sub replay {
             $store->record($network, $obs, $j->{time}, $r->{verdict});
             $stats{joins}++;
             $stats{verdicts}{ $r->{verdict} }++;
+            $stats{promoted} += $store->promote_if_moved($network, $j->{nick}, $j->{time}, $promote_count, $promote_days);
         }
     }
     return \%stats;
