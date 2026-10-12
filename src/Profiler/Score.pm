@@ -5,14 +5,18 @@ use warnings;
 
 use NetAddr::IP;
 
+use Profiler::Version;
+
 # How much each attribute contributes to the final trust. They add up to 1, so
-# trust is a weighted average of the per-attribute familiarity.
+# trust is a weighted average of the per-attribute familiarity. Version is
+# light because anyone can make their client say anything.
 our %WEIGHTS = (
-    host     => 0.35,
+    host     => 0.30,
     ident    => 0.20,
     realname => 0.20,
     server   => 0.10,
-    channel  => 0.15,
+    channel  => 0.10,
+    version  => 0.10,
 );
 
 # Familiarity is count / (count + K): seen K times means halfway to 1.
@@ -21,6 +25,9 @@ our $K = 3;
 # A past sighting from a nearby address (same /24 or /64) counts as this much
 # of a sighting from the exact address.
 our $SUBNET_CREDIT = 0.5;
+
+# Likewise for a past VERSION reply from the same client at another version.
+our $CLIENT_CREDIT = 0.5;
 
 my %PREFIX = (4 => 24, 6 => 64);
 
@@ -50,6 +57,7 @@ sub trust {
 
     my %parts;
     $parts{host} = $WEIGHTS{host} * familiarity(host_count($profile, $obs));
+    $parts{version} = $WEIGHTS{version} * familiarity(version_count($profile, $obs));
     for my $attr (qw(ident realname server channel)) {
         my $value = $obs->{$attr};
         my $count = defined $value ? ($profile->{"${attr}s"}{$value} // 0) : 0;
@@ -81,6 +89,21 @@ sub host_count {
         $nearby += $profile->{ips}{$seen} if same_subnet($seen, $ip);
     }
     return $exact + $SUBNET_CREDIT * $nearby;
+}
+
+sub version_count {
+    my ($profile, $obs) = @_;
+    my $version = $obs->{version};
+    return 0 unless defined $version;
+
+    my $client = Profiler::Version::client($version);
+    my $exact = $profile->{versions}{$version} // 0;
+    my $same_client = 0;
+    for my $seen (keys %{ $profile->{versions} }) {
+        next if $seen eq $version;
+        $same_client += $profile->{versions}{$seen} if Profiler::Version::client($seen) eq $client;
+    }
+    return $exact + $CLIENT_CREDIT * $same_client;
 }
 
 1;

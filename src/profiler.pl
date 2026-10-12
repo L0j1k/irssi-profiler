@@ -11,6 +11,7 @@ use Profiler::Queue;
 use Profiler::Rules;
 use Profiler::Score;
 use Profiler::Store;
+use Profiler::Version;
 use Profiler::Whois;
 
 our $VERSION = '0.10';
@@ -21,13 +22,14 @@ our %IRSSI = (
     license     => 'MIT',
 );
 
-# When someone joins a channel named in the rules file, we queue a whois on
-# them. When it comes back we look up their host with the system whois (in a
-# child process, so irssi never blocks) to spot VPNs, proxies and hosting
-# providers. Then we score them against what we saw of that nick before,
-# print a warning in the channel if the score is under the rule's minimum, and
-# add this sighting to their profile. Nothing is ever sent to the channel or
-# the user apart from the whois itself.
+# When someone joins a channel named in the rules file, we queue a whois and a
+# CTCP VERSION on them. Once the whois is done and the VERSION reply is in (or
+# has timed out) we look up their host with the system whois (in a child
+# process, so irssi never blocks) to spot VPNs, proxies and hosting providers.
+# Then we score them against what we saw of that nick before, print a warning
+# in the channel if the score is under the rule's minimum, and add this
+# sighting to their profile. Nothing is sent to the channel, and the user only
+# gets the CTCP VERSION request.
 
 my $rules = { watches => [], proxy_keywords => [] };
 my $store;
@@ -35,8 +37,10 @@ my $store;
 # One throttled whois queue per server tag.
 my %queues;
 
-# Whois requests in flight, keyed "tag/nick" lowercased, each holding the job
-# that is being filled in from the replies.
+# Lookups in flight, keyed "tag/nick" lowercased. Each entry collects the whois
+# fields and VERSION reply for that nick, plus every queued join (one per
+# channel) that is waiting on them, so a nick joining two watched channels only
+# gets asked once.
 my %pending;
 
 # When each "tag/channel/nick" was last profiled, so someone bouncing in and
@@ -127,11 +131,23 @@ sub tick {
     }
 }
 
-# The redirect keeps the replies out of the status window and hands them to
-# our own signals below.
+sub pending_key {
+    my ($tag, $nick) = @_;
+    return lc "$tag/$nick";
+}
+
+# The redirect keeps the whois replies out of the status window and hands them
+# to our own signals below. The VERSION request goes out raw so it does not
+# echo into a window either.
 sub send_whois {
     my ($server, $job) = @_;
-    $pending{ lc "$job->{tag}/$job->{nick}" } = $job;
+    my $key = pending_key($job->{tag}, $job->{nick});
+    if ($pending{$key}) {
+        push @{ $pending{$key}{jobs} }, $job;
+        return;
+    }
+    my $entry = $pending{$key} = { jobs => [$job] };
+
     $server->redirect_event('whois', 1, $job->{nick}, 0, undef, {
         'event 311' => 'redir profiler_whois_user',
         'event 312' => 'redir profiler_whois_server',
@@ -140,27 +156,31 @@ sub send_whois {
         ''          => 'event empty',
     });
     $server->send_raw("WHOIS $job->{nick}");
-}
+    $server->send_raw("PRIVMSG $job->{nick} :\001VERSION\001");
 
-sub pending_job {
-    my ($server, $nick) = @_;
-    return $pending{ lc "$server->{tag}/$nick" };
+    # The entry is checked by identity so a timer left over from an earlier
+    # lookup of the same nick cannot cut a newer one short.
+    Irssi::timeout_add_once(1000 * Irssi::settings_get_int('profiler_version_timeout'), sub {
+        return unless $pending{$key} && $pending{$key} == $entry;
+        $entry->{version} //= $Profiler::Version::NO_REPLY;
+        finish_if_ready($key);
+    }, undef);
 }
 
 # :server 311 me nick ident host * :realname
 sub on_whois_user {
     my ($server, $data) = @_;
     my ($nick, $ident, $host, $realname) = $data =~ /^\S+ (\S+) (\S+) (\S+) \S+ :(.*)$/ or return;
-    my $job = pending_job($server, $nick) or return;
-    @$job{qw(ident host realname)} = ($ident, $host, $realname);
+    my $entry = $pending{ pending_key($server->{tag}, $nick) } or return;
+    @$entry{qw(ident host realname)} = ($ident, $host, $realname);
 }
 
 # :server 312 me nick irc.server.name :server info
 sub on_whois_server {
     my ($server, $data) = @_;
     my ($nick, $ircserver) = $data =~ /^\S+ (\S+) (\S+)/ or return;
-    my $job = pending_job($server, $nick) or return;
-    $job->{server} = $ircserver;
+    my $entry = $pending{ pending_key($server->{tag}, $nick) } or return;
+    $entry->{server} = $ircserver;
 }
 
 # Both "end of whois" and "no such nick" land here. If they already left we
@@ -168,8 +188,33 @@ sub on_whois_server {
 sub on_whois_end {
     my ($server, $data) = @_;
     my ($nick) = $data =~ /^\S+ (\S+)/ or return;
-    my $job = delete $pending{ lc "$server->{tag}/$nick" } or return;
-    look_up_host($job);
+    my $key = pending_key($server->{tag}, $nick);
+    my $entry = $pending{$key} or return;
+    $entry->{whois_done} = 1;
+    finish_if_ready($key);
+}
+
+# We listen on the generic "ctcp reply" signal. Claiming "ctcp reply version"
+# would mark the reply as handled, and we don't want to risk that hiding
+# VERSION replies you asked for yourself.
+sub on_ctcp_reply {
+    my ($server, $args, $nick) = @_;
+    my ($version) = $args =~ /^VERSION\b\s*(.*)$/is or return;
+    my $key = pending_key($server->{tag}, $nick);
+    my $entry = $pending{$key} or return;
+    return if defined $entry->{version};
+    $entry->{version} = Profiler::Version::clean($version);
+    finish_if_ready($key);
+}
+
+sub finish_if_ready {
+    my ($key) = @_;
+    my $entry = $pending{$key} or return;
+    return unless $entry->{whois_done} && defined $entry->{version};
+    delete $pending{$key};
+
+    my %found = map { defined $entry->{$_} ? ($_ => $entry->{$_}) : () } qw(ident host realname server version);
+    look_up_host({ %$_, %found }) for @{ $entry->{jobs} };
 }
 
 sub look_up_host {
@@ -242,7 +287,7 @@ sub judge {
         $server->print($job->{channel}, "profiler: $text", MSGLEVEL_CLIENTCRAP);
     };
 
-    my $who = "$job->{nick} ($job->{ident}\@$job->{host})";
+    my $who = "$job->{nick} ($job->{ident}\@$job->{host}, client: $job->{version})";
     my $seen = $profile ? "seen $profile->{sightings} time(s) before" : 'never seen before';
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
     my $score = sprintf('%.2f', $trust);
@@ -286,7 +331,7 @@ sub cmd_profiler {
         return info("no profile for $arg on $server->{tag}") unless $p;
         info("$p->{nick} on $server->{tag}: $p->{sightings} sighting(s), first "
             . localtime($p->{first_seen}) . ", last " . localtime($p->{last_seen}));
-        for my $table (qw(hosts ips idents realnames servers channels)) {
+        for my $table (qw(hosts ips idents realnames servers channels versions)) {
             my $counts = $p->{$table} or next;
             info("  $table: " . join(', ', map { "$_ x$counts->{$_}" }
                 sort { $counts->{$b} <=> $counts->{$a} } keys %$counts));
@@ -307,12 +352,14 @@ Irssi::settings_add_int('profiler', 'profiler_queue_max', 100);
 Irssi::settings_add_int('profiler', 'profiler_recheck', 600);
 Irssi::settings_add_int('profiler', 'profiler_hostinfo_max_age', 7 * 24 * 3600);
 Irssi::settings_add_int('profiler', 'profiler_lookup_timeout', 20);
+Irssi::settings_add_int('profiler', 'profiler_version_timeout', 10);
 Irssi::settings_add_bool('profiler', 'profiler_verbose', 0);
 
 Irssi::signal_add('message join', \&on_join);
 Irssi::signal_add('redir profiler_whois_user', \&on_whois_user);
 Irssi::signal_add('redir profiler_whois_server', \&on_whois_server);
 Irssi::signal_add('redir profiler_whois_end', \&on_whois_end);
+Irssi::signal_add('ctcp reply', \&on_ctcp_reply);
 Irssi::command_bind('profiler', \&cmd_profiler);
 Irssi::timeout_add(500, \&tick, undef);
 

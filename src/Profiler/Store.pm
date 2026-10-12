@@ -13,7 +13,8 @@ use JSON::PP;
 #         "<lowercased nick>": {
 #           "nick": "Bob", "first_seen": ..., "last_seen": ..., "sightings": N,
 #           "hosts": {"<host>": count}, "ips": {...}, "idents": {...},
-#           "realnames": {...}, "servers": {...}, "channels": {...}
+#           "realnames": {...}, "servers": {...}, "channels": {...},
+#           "versions": {...}
 #         }
 #       },
 #       "hostinfo": { "<host>": { "checked": time, "ip": ..., "proxy": ... } }
@@ -27,6 +28,7 @@ my %TABLES = (
     realname => 'realnames',
     server   => 'servers',
     channel  => 'channels',
+    version  => 'versions',
 );
 
 my $JSON = JSON::PP->new->canonical->pretty;

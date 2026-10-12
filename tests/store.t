@@ -17,6 +17,7 @@ my %obs = (
     realname => 'Bob Smith',
     server   => 'irc.example.net',
     channel  => '#CHAN',
+    version  => 'irssi v1.4.5',
 );
 
 subtest 'recording and reloading sightings' => sub {
@@ -39,6 +40,7 @@ subtest 'recording and reloading sightings' => sub {
     is($p->{ips}{'10.10.10.2'}, 2, 'ip count');
     is($p->{realnames}{'Bob Smith'}, 1, 'missing values are not counted');
     is($p->{channels}{'#chan'}, 2, 'channels lowercased');
+    is($p->{versions}{'irssi v1.4.5'}, 2, 'client versions counted');
 };
 
 subtest 'odd network names make safe file names' => sub {

@@ -7,8 +7,9 @@
 # under min_trust. "*" in the network or channel field means "any". When
 # several lines cover a channel, the highest min_trust wins.
 #
-# Roughly: a nick seen 3 times before from the same host, ident, realname and
-# server scores 0.5, 9 times scores 0.75. A nick never seen before scores 0.
+# Roughly: a nick seen 3 times before in the same channel with the same host,
+# ident, realname, server and client scores 0.5, 9 times scores 0.75. A nick
+# never seen before scores 0.
 #
 #   proxy <keyword or phrase>
 #

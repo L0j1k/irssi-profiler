@@ -20,6 +20,7 @@ sub steady_profile {
         realnames => { 'Bob Smith' => $n },
         servers   => { 'irc.example.net' => $n },
         channels  => { '#chan' => $n },
+        versions  => { 'irssi v1.4.5' => $n },
     };
 }
 
@@ -30,6 +31,7 @@ my %same = (
     realname => 'Bob Smith',
     server   => 'irc.example.net',
     channel  => '#chan',
+    version  => 'irssi v1.4.5',
 );
 
 subtest 'familiarity' => sub {
@@ -94,6 +96,29 @@ subtest 'missing whois fields score zero rather than failing' => sub {
     my (undef, $parts) = Profiler::Score::trust(steady_profile(3), \%obs);
     is($parts->{realname}, 0, 'no realname');
     is($parts->{server}, 0, 'no server');
+};
+
+subtest 'client version' => sub {
+    my $w = $Profiler::Score::WEIGHTS{version};
+    my (undef, $parts) = Profiler::Score::trust(steady_profile(3), \%same);
+    near($parts->{version}, $w * 0.5, 'exact version');
+
+    (undef, $parts) = Profiler::Score::trust(steady_profile(4), { %same, version => 'irssi v1.4.6' });
+    near($parts->{version}, $w * Profiler::Score::familiarity(4 * $Profiler::Score::CLIENT_CREDIT),
+        'an upgrade of the same client gets partial credit');
+
+    (undef, $parts) = Profiler::Score::trust(steady_profile(4), { %same, version => 'HexChat 2.16.1' });
+    is($parts->{version}, 0, 'a different client gets nothing');
+
+    my $silent = { %{ steady_profile(3) }, versions => { $Profiler::Version::NO_REPLY => 3 } };
+    (undef, $parts) = Profiler::Score::trust($silent, { %same, version => $Profiler::Version::NO_REPLY });
+    near($parts->{version}, $w * 0.5, 'never answering is consistent too');
+};
+
+subtest 'weights add up to 1' => sub {
+    my $sum = 0;
+    $sum += $_ for values %Profiler::Score::WEIGHTS;
+    near($sum, 1, 'sum');
 };
 
 subtest 'same_subnet' => sub {
