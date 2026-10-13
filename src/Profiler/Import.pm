@@ -44,6 +44,15 @@ sub parse_join {
     };
 }
 
+# 01:33:23-!- old is now known as new
+# 01:33 -!- old is now known as new                   (older logs)
+sub parse_nick_change {
+    my ($line) = @_;
+    my ($h, $mi, $s, $old, $new) =
+        $line =~ /^(\d\d):(\d\d)(?::(\d\d))? ?-!- (\S+) is now known as (\S+)/ or return undef;
+    return { hour => $h + 0, min => $mi + 0, sec => ($s // 0) + 0, old => $old, new => $new };
+}
+
 # A host written as an IPv4 or IPv6 address doubles as the ip, which is what
 # lets nearby addresses count as partial matches.
 sub literal_ip {
@@ -51,6 +60,14 @@ sub literal_ip {
     return $host if $host =~ /^\d{1,3}(\.\d{1,3}){3}$/;
     return $host if $host =~ /^[0-9a-f]*:[0-9a-f:]*:[0-9a-f.]*$/i;
     return undef;
+}
+
+# Epoch time of a parsed line, from its hour/min/sec and the file's date.
+# Log times are local.
+sub line_time {
+    my ($line, $p) = @_;
+    return POSIX::mktime($line->{sec}, $line->{min}, $line->{hour},
+        $p->{day}, $p->{month} - 1, $p->{year} - 1900, 0, 0, -1);
 }
 
 # Channel logs grouped by day: [ ["YYYY-MM-DD", [paths...]], ... ] oldest
@@ -79,14 +96,16 @@ sub channel_logs_by_day {
 #   promote_after_sightings, promote_after_days
 #                    optional, see Profiler::Score::promotable
 #
-# Returns stats: joins, repeats, promoted, unparsed, unparsed_examples (up to
-# 5 lines) and verdicts (counts per verdict).
+# Returns stats: joins, repeats, promoted, nick_changes (lines, so one change
+# seen in three channels counts three times), unparsed, unparsed_examples
+# (up to 5 lines) and verdicts (counts per verdict).
 sub replay {
     my (%arg) = @_;
     my ($store, $network) = @arg{qw(store network)};
     my $promote_count = $arg{promote_after_sightings} // $Profiler::Score::PROMOTE_AFTER_SIGHTINGS;
     my $promote_days = $arg{promote_after_days} // $Profiler::Score::PROMOTE_AFTER_DAYS;
-    my %stats = (joins => 0, repeats => 0, promoted => 0, unparsed => 0, unparsed_examples => [], verdicts => {});
+    my %stats = (joins => 0, repeats => 0, promoted => 0, nick_changes => 0, unparsed => 0, unparsed_examples => [],
+        verdicts => {});
     my %last_join;
     my $month = '';
 
@@ -104,6 +123,13 @@ sub replay {
             my ($path, $p) = @$f;
             open my $fh, '<', $path or die "cannot read $path: $!\n";
             while (my $line = <$fh>) {
+                # A nick change shows up in the log of every channel the
+                # person was in, which just repeats the same link.
+                if (my $n = parse_nick_change($line)) {
+                    $store->link_nicks($network, $n->{old}, $n->{new}, line_time($n, $p));
+                    $stats{nick_changes}++;
+                    next;
+                }
                 next unless $line =~ /-!- .* has joined /;
                 my $j = parse_join($line);
                 if (!$j) {
@@ -112,8 +138,7 @@ sub replay {
                     push @{ $stats{unparsed_examples} }, "$path: $line" if @{ $stats{unparsed_examples} } < 5;
                     next;
                 }
-                $j->{time} = POSIX::mktime($j->{sec}, $j->{min}, $j->{hour},
-                    $p->{day}, $p->{month} - 1, $p->{year} - 1900, 0, 0, -1);
+                $j->{time} = line_time($j, $p);
                 push @joins, $j;
             }
             close $fh;

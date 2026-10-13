@@ -5,6 +5,7 @@ use warnings;
 
 use DBI;
 
+use Profiler::Nick;
 use Profiler::Score;
 
 # One SQLite database per network in the data directory, holding every
@@ -53,7 +54,29 @@ my @SCHEMA = (
         checked INTEGER NOT NULL,
         ip TEXT, netname TEXT, org TEXT, origin TEXT, proxy TEXT, error TEXT
     )',
+    # Every nick we've recorded, with its skeleton (see Profiler::Nick), for
+    # finding variants like bob_ and B0B`.
+    'CREATE TABLE IF NOT EXISTS nicks (
+        nick_key TEXT PRIMARY KEY,
+        skeleton TEXT NOT NULL
+    )',
+    'CREATE INDEX IF NOT EXISTS nicks_by_skeleton ON nicks (skeleton)',
+    # Pairs of nicks someone switched between with /nick. Stored once per
+    # pair with a < b, since the link works both ways.
+    'CREATE TABLE IF NOT EXISTS nick_links (
+        a          TEXT NOT NULL,
+        b          TEXT NOT NULL,
+        first_seen INTEGER NOT NULL,
+        last_seen  INTEGER NOT NULL,
+        PRIMARY KEY (a, b)
+    )',
+    'CREATE INDEX IF NOT EXISTS nick_links_by_b ON nick_links (b)',
 );
+
+# Stored in the database as PRAGMA user_version. Bump it whenever the schema
+# changes. There's no upgrading: a database from an older version is refused
+# and gets re-imported.
+our $SCHEMA_VERSION = 2;
 
 sub new {
     my ($class, $dir) = @_;
@@ -91,10 +114,17 @@ sub db {
         # Otherwise a reader would wait on whoever is writing. WAL is stored
         # in the file and lets the sqlite3 command or the diagnostic read
         # while irssi or the importer writes.
-        my ($ready) = $dbh->selectrow_array("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sightings'");
-        if (!$ready) {
+        my ($version) = $dbh->selectrow_array('PRAGMA user_version');
+        my ($tables) = $dbh->selectrow_array("SELECT count(*) FROM sqlite_master WHERE type = 'table'");
+        if (!$tables) {
             $dbh->do('PRAGMA journal_mode = WAL');
             $dbh->do($_) for @SCHEMA;
+            $dbh->do("PRAGMA user_version = $SCHEMA_VERSION");
+        }
+        elsif ($version != $SCHEMA_VERSION) {
+            my $which = $version < $SCHEMA_VERSION ? 'an older' : 'a newer';
+            die "it was made by $which version of the profiler (schema $version, need $SCHEMA_VERSION);"
+                . " move it aside and run the import again\n";
         }
         $dbh->{AutoCommit} = 0;
         $dbh;
@@ -163,6 +193,8 @@ sub record {
     # would add the missing fields to %sighting as undef.
     $insert->execute($obs->{nick}, lc $obs->{nick}, map { $sighting{$_} } @columns);
     $sighting{id} = $dbh->sqlite_last_insert_rowid;
+    $dbh->prepare_cached('INSERT OR IGNORE INTO nicks (nick_key, skeleton) VALUES (?, ?)')
+        ->execute(lc $obs->{nick}, Profiler::Nick::skeleton($obs->{nick}));
 
     $p->{nick} = $obs->{nick};
     $p->{last_seen} = $now;
@@ -230,6 +262,32 @@ sub promote_if_moved {
         $sth->execute($now, $s->{id});
     }
     return scalar @moved;
+}
+
+# Someone went from one nick to the other with /nick, so both are the same
+# person. Repeats just move last_seen along.
+sub link_nicks {
+    my ($self, $network, $old, $new, $now) = @_;
+    my ($first, $second) = sort(lc $old, lc $new);
+    return if $first eq $second;
+    $self->db($network, 1)->prepare_cached('INSERT INTO nick_links (a, b, first_seen, last_seen) VALUES (?, ?, ?, ?)
+        ON CONFLICT (a, b) DO UPDATE SET last_seen = excluded.last_seen')->execute($first, $second, $now, $now);
+}
+
+# The nicks this one has been linked to directly, sorted.
+sub linked {
+    my ($self, $network, $nick) = @_;
+    my $dbh = $self->db($network) or return ();
+    return @{ $dbh->selectcol_arrayref('SELECT b FROM nick_links WHERE a = ? UNION SELECT a FROM nick_links WHERE b = ?
+        ORDER BY 1', undef, lc $nick, lc $nick) };
+}
+
+# Recorded nicks with the same skeleton as this one, other than itself, sorted.
+sub similar {
+    my ($self, $network, $nick) = @_;
+    my $dbh = $self->db($network) or return ();
+    return @{ $dbh->selectcol_arrayref('SELECT nick_key FROM nicks WHERE skeleton = ? AND nick_key != ? ORDER BY nick_key',
+        undef, Profiler::Nick::skeleton($nick), lc $nick) };
 }
 
 sub set_hostinfo {

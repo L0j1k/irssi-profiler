@@ -44,6 +44,16 @@ subtest 'parse_join' => sub {
     is(Profiler::Import::parse_join('22:00:00-!- broken [no-at-sign] has joined #chan'), undef, 'malformed');
 };
 
+subtest 'parse_nick_change' => sub {
+    is_deeply(Profiler::Import::parse_nick_change('01:33:23-!- cybnat is now known as nat'),
+        { hour => 1, min => 33, sec => 23, old => 'cybnat', new => 'nat' }, 'nick change');
+    is_deeply(Profiler::Import::parse_nick_change('01:33 -!- B0B` is now known as bob'),
+        { hour => 1, min => 33, sec => 0, old => 'B0B`', new => 'bob' }, 'older format');
+    is(Profiler::Import::parse_nick_change('00:12 <@op> 11:33 -!- a is now known as b'), undef,
+        'quoted in chat is not a nick change');
+    is(Profiler::Import::parse_nick_change('08:57:35-!- bob [~bob@192.0.2.26] has joined #chan'), undef, 'a join is not');
+};
+
 subtest 'replaying a log directory' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);
@@ -62,6 +72,8 @@ subtest 'replaying a log directory' => sub {
     like($stats->{unparsed_examples}[0], qr/broken/, 'and shown');
     is($stats->{verdicts}{suspect}, 1, 'one suspect');
     is($stats->{promoted}, 0, 'a single impostor join is not a move');
+    is($stats->{nick_changes}, 1, 'nick change lines');
+    is_deeply([ $store->linked('efnet', 'bob') ], ['cybbob'], 'nick change linked');
     is_deeply(\@months, ['2024-05'], 'progress per month');
 
     my $bob = $store->profile('efnet', 'bob');

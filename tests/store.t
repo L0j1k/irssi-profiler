@@ -163,6 +163,40 @@ subtest 'reviews reach sightings older than the profile shows' => sub {
     ok(!$old->{quarantined} && $old->{reviewed}, 'and accepted it');
 };
 
+subtest 'nick changes link two nicks, one hop only' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->link_nicks('efnet', 'CybBob', 'Bob', 100);
+    $store->link_nicks('efnet', 'bob', 'cybbob', 200);
+    $store->link_nicks('efnet', 'bob', 'robert', 300);
+    $store->link_nicks('efnet', 'bob', 'BOB', 400);
+    is_deeply([ $store->linked('efnet', 'BOB') ], ['cybbob', 'robert'], 'both ways, each once');
+    is_deeply([ $store->linked('efnet', 'cybbob') ], ['bob'], 'not through bob to robert');
+    is_deeply([ $store->linked('efnet', 'nobody') ], [], 'no links');
+    is_deeply([ $store->linked('other', 'bob') ], [], 'unknown network');
+
+    $store->flush;
+    is_deeply([ reopened($dir)->linked('efnet', 'robert') ], ['bob'], 'stored');
+};
+
+subtest 'similar nicks share a skeleton' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->record('efnet', { %obs, nick => $_ }, 1, 'unknown') for qw(Bob bob_ B0B` bobby);
+    is_deeply([ $store->similar('efnet', 'bob__') ], ['b0b`', 'bob', 'bob_'], 'variants, not bobby');
+    is_deeply([ $store->similar('efnet', 'bob_') ], ['b0b`', 'bob'], 'not itself');
+    is_deeply([ $store->similar('other', 'bob') ], [], 'unknown network');
+};
+
+subtest 'a database from an older profiler is refused' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
+    $dbh->do('CREATE TABLE sightings (id INTEGER PRIMARY KEY)');
+    $dbh->disconnect;
+    eval { Profiler::Store->new($dir)->profile('efnet', 'bob') };
+    like($@, qr/older version of the profiler.*import/s, 'says to re-import');
+};
+
 subtest 'odd network names make safe file names' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);
