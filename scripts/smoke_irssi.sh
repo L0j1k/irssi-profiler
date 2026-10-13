@@ -68,13 +68,19 @@ check_word() {
     tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::say_in(undef, undef, 'smoke $word line', '$word')" Enter
     wait_for "$word smoke $word line" || fail "$word line not printed"
     line="$(tmux capture-pane -p -e -t "$session" | grep "smoke $word line" | tail -1)"
-    grep -qE $'(\e\\[1m\e\\[3'"$colour"$'m|\e\\[9'"$colour"$'m)'"$word" <<< "$line" || fail "$word is not bright colour $colour"
+    grep -qE "$colour$word" <<< "$line" || fail "$word is not in its colour"
     grep -qE $'\e\\[(22;)?36m'" ?smoke $word line" <<< "$line" || fail "text after $word is not dark cyan"
 }
-check_word WARNING 1
-check_word SUSPECT 3
-check_word MIXED 6
-check_word CONFIDENT 2
+bright() { echo $'(\e\\[1m\e\\[3'"$1"$'m|\e\\[9'"$1"$'m)'; }
+grey=$'\e\\[(22;)?37m'
+check_word WARNING "$(bright 1)"
+check_word SUSPECT "$(bright 3)"
+check_word MIXED "$(bright 6)"
+check_word CONFIDENT "$(bright 2)"
+check_word 'NEW HOST' "$grey"
+check_word UNKNOWN "$grey"
+check_word VARIANT "$grey"
+check_word MOVED "$grey"
 
 tmux send-keys -t "$session" "/profiler list" Enter
 wait_for 'efnet #chan 0.5' || fail "/profiler list did not show the watch"

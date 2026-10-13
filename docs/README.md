@@ -111,7 +111,7 @@ trust under 0.5 anyway. The verdict is:
   of ident, realname or client does. Channel and server don't count. Ident,
   realname and client (whichever we have) all match. This is usually the real
   person on another machine, a VPN or a proxy, so it gets a quiet line
-  instead of a warning, like `bob: new host ~bob@x.example, ident matches
+  instead of a warning, like `NEW HOST bob (~bob@x.example): ident matches
   (frequently changes hosts)`. The last part shows when the nick has used at
   least a quarter as many hosts as sightings with that ident. It's
   quarantined the same way as a suspect.
@@ -156,7 +156,7 @@ Each candidate (at most 20) is judged on host and ident like any other
 join. The nick only picks who to compare with. If the best one comes out
 consistent or mixed you get a line like:
 
-    bob_ looks like bob, who they've switched nicks with before: host, ident match; trust +0.71 against their history
+    VARIANT bob_ looks like bob, who they've switched nicks with before: host, ident match; trust +0.71 against their history
 
 This doesn't change the joiner's own verdict or what's recorded.
 
@@ -170,16 +170,28 @@ zed, lex, lexie` (latest first, up to five).
 ## Output
 
 Lines are drawn in your theme's `{channick}` colour, the one irssi uses for
-a nick that parts or quits (dark cyan by default). A verdict word at the
-start of a line has its own colour: WARNING bright red, SUSPECT bright
-yellow, MIXED cyan and CONFIDENT bright green. CONFIDENT and MIXED lines
-show with `profiler_verbose` on, or for a nick change. To change a colour,
-override the format in your theme, for example:
+a nick that parts or quits (dark cyan by default). Every line about
+someone starts with a one-word summary in its own colour:
+
+| word      | colour        | means |
+|-----------|---------------|-------|
+| WARNING   | bright red    | under the channel's min_trust, or on a likely proxy |
+| SUSPECT   | bright yellow | doesn't match the nick's history |
+| MIXED     | bright cyan   | partly matches |
+| CONFIDENT | bright green  | consistent with the nick's history |
+| NEW HOST  | grey          | only the host is new |
+| UNKNOWN   | grey          | too little history to say |
+| VARIANT   | grey          | looks like a related nick |
+| MOVED     | grey          | held sightings promoted to a new usual host |
+
+CONFIDENT, MIXED and UNKNOWN lines show with `profiler_verbose` on, or for
+a nick change. To change a colour, override the format in your theme, for
+example:
 
     "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n {channick $0}"; };
 
-The formats are `profiler_line`, `profiler_warning`, `profiler_suspect`,
-`profiler_mixed` and `profiler_confident`.
+The formats are `profiler_line` for status messages and `profiler_<word>`
+(lowercase, `_` for the space) for the rest.
 
 ## Limits
 

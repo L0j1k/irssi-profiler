@@ -65,21 +65,36 @@ my %recent;
 # Our lines are drawn like a nick that parts or quits, so they stand out from
 # the channel without shouting. Going through the theme keeps them in step
 # with whatever colours the user has, and keeps % in the text literal. A line
-# that leads with a verdict word gets that word in its own colour.
+# about someone leads with a one-word summary in its own colour, so it can be
+# read at a glance.
+my %WORD_COLOUR = (
+    WARNING     => '%R',
+    SUSPECT     => '%Y',
+    MIXED       => '%C',
+    CONFIDENT   => '%G',
+    'NEW HOST'  => '%w',
+    UNKNOWN     => '%w',
+    VARIANT     => '%w',
+    MOVED       => '%w',
+);
+
+sub word_format {
+    my ($word) = @_;
+    (my $name = lc $word) =~ tr/ /_/;
+    return "profiler_$name";
+}
+
 Irssi::theme_register([
-    profiler_line      => '{channick profiler: $0}',
-    profiler_warning   => '{channick profiler:} %RWARNING%n {channick $0}',
-    profiler_suspect   => '{channick profiler:} %YSUSPECT%n {channick $0}',
-    profiler_mixed     => '{channick profiler:} %CMIXED%n {channick $0}',
-    profiler_confident => '{channick profiler:} %GCONFIDENT%n {channick $0}',
+    profiler_line => '{channick profiler: $0}',
+    map { word_format($_) => "{channick profiler:} $WORD_COLOUR{$_}$_%n {channick \$0}" } sort keys %WORD_COLOUR,
 ]);
 
 # Prints one of our lines in a channel's window, or in the status window when
-# there's no channel or the server has gone. $word is WARNING, SUSPECT, MIXED
-# or CONFIDENT for a line that leads with one.
+# there's no channel or the server has gone. $word is one of %WORD_COLOUR's
+# for a line about someone.
 sub say_in {
     my ($tag, $channel, $text, $word) = @_;
-    my $format = $word ? 'profiler_' . lc $word : 'profiler_line';
+    my $format = $word ? word_format($word) : 'profiler_line';
     my $server = defined $tag ? Irssi::server_find_tag($tag) : undef;
     return $server->printformat($channel, MSGLEVEL_CLIENTCRAP, $format, $text) if $server && defined $channel;
     Irssi::printformat(MSGLEVEL_CLIENTCRAP, $format, $text);
@@ -363,7 +378,7 @@ sub judge {
     elsif ($r->{verdict} eq 'new host') {
         my $matches = what_matches($r, qw(ident realname version)) // 'nothing else contradicts';
         my $often = $r->{host_changes_often} ? ' (frequently changes hosts)' : '';
-        $say->("$job->{nick}: ${was}new host $job->{ident}\@$job->{host}, $matches$often; $seen");
+        $say->("$job->{nick} (${was}$job->{ident}\@$job->{host}): $matches$often; $seen", 'NEW HOST');
     }
     elsif (Profiler::Rules::below_minimum($r, $min)) {
         $say->("$who has $score, under $min; $seen$why", 'WARNING');
@@ -371,7 +386,7 @@ sub judge {
     # A nick change is always reported, since irssi's own line doesn't say
     # whether the new nick fits.
     elsif (Irssi::settings_get_bool('profiler_verbose') || defined $job->{was}) {
-        my %word = (consistent => 'CONFIDENT', mixed => 'MIXED');
+        my %word = (consistent => 'CONFIDENT', mixed => 'MIXED', unknown => 'UNKNOWN');
         $say->("$who has $score; $seen", $word{ $r->{verdict} });
     }
 
@@ -380,12 +395,12 @@ sub judge {
         my $how = $variant->{linked} ? ", who they've switched nicks with before" : '';
         my $matches = what_matches($v, qw(host ident realname version)) // 'nothing contradicts';
         $say->(sprintf('%s looks like %s%s: %s; trust %+.2f against their history',
-            $job->{nick}, $variant->{nick}, $how, $matches, $v->{trust}));
+            $job->{nick}, $variant->{nick}, $how, $matches, $v->{trust}), 'VARIANT');
     }
 
     if ($promoted) {
         $say->("$job->{nick} looks like they have a new usual host: $promoted quarantined sighting(s) like this one "
-            . "now count toward their history. /profiler show $job->{nick} to check");
+            . "now count toward their history. /profiler show $job->{nick} to check", 'MOVED');
     }
 
     if ($hostinfo->{proxy}) {
