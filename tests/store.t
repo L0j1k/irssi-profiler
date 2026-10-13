@@ -141,14 +141,18 @@ subtest 'scoring sees the latest sightings, the database keeps everything' => su
     my $p = $store->profile('efnet', 'bob');
     is_deeply([ map { $_->{time} } @{ $p->{sightings} } ], [3, 4, 5], 'last three in the profile');
     is($p->{first_seen}, 1, 'first seen goes back further');
+    is($p->{total}, 5, 'and the total counts every sighting');
 
     $store->flush;
     my $other = reopened($dir);
     is_deeply([ map { $_->{time} } @{ $other->profile('efnet', 'bob')->{sightings} } ], [3, 4, 5], 'same after reloading');
     is($other->profile('efnet', 'bob')->{first_seen}, 1, 'first seen after reloading');
+    is($other->profile('efnet', 'bob')->{total}, 5, 'total after reloading');
     my $all = $other->all_profiles('efnet');
     is_deeply([ map { $_->{time} } @{ $all->{users}{bob}{sightings} } ], [1 .. 5], 'every sighting kept');
     is($all->{users}{bob}{nick}, 'Bob', 'with the display nick');
+    $other->record('efnet', \%obs, 6, 'consistent');
+    is($other->profile('efnet', 'bob')->{total}, 6, 'total after recording');
 };
 
 subtest 'reviews reach sightings older than the profile shows' => sub {

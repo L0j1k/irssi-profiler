@@ -144,8 +144,9 @@ sub sighting_from_row {
     return $row;
 }
 
-# A nick's profile: { nick, first_seen, last_seen, sightings => [...] } with
-# the latest $HISTORY_SIZE sightings, oldest first. Undef if never seen.
+# A nick's profile: { nick, first_seen, last_seen, total, sightings => [...] }
+# with the latest $HISTORY_SIZE sightings, oldest first. total counts every
+# sighting ever recorded. Undef if never seen.
 sub profile {
     my ($self, $network, $nick) = @_;
     my $key = lc $nick;
@@ -158,7 +159,7 @@ sub profile {
         { Slice => {} }, $key, $HISTORY_SIZE);
     return undef unless @$rows;
 
-    my ($first_seen) = $dbh->selectrow_array('SELECT MIN(time) FROM sightings WHERE nick_key = ?', undef, $key);
+    my ($first_seen, $total) = $dbh->selectrow_array('SELECT MIN(time), COUNT(*) FROM sightings WHERE nick_key = ?', undef, $key);
     # Copied out before sighting_from_row strips the nick from the rows.
     my ($display, $last_seen) = @{ $rows->[0] }{qw(nick time)};
     my @sightings = map { sighting_from_row($_) } reverse @$rows;
@@ -166,6 +167,7 @@ sub profile {
         nick       => $display,
         first_seen => $first_seen,
         last_seen  => $last_seen,
+        total      => $total,
         sightings  => \@sightings,
     };
 }
@@ -175,7 +177,7 @@ sub record {
     my $dbh = $self->db($network, 1);
     my $p = $self->profile($network, $obs->{nick});
     if (!$p) {
-        $p = { first_seen => $now, sightings => [] };
+        $p = { first_seen => $now, total => 0, sightings => [] };
         $self->{profiles}{ lc $network }{ lc $obs->{nick} } = $p;
     }
 
@@ -198,6 +200,7 @@ sub record {
 
     $p->{nick} = $obs->{nick};
     $p->{last_seen} = $now;
+    $p->{total}++;
     push @{ $p->{sightings} }, \%sighting;
     splice @{ $p->{sightings} }, 0, @{ $p->{sightings} } - $HISTORY_SIZE
         if @{ $p->{sightings} } > $HISTORY_SIZE;

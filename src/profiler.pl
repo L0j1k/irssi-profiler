@@ -339,7 +339,7 @@ sub judge {
     my ($r, $count, $promoted, $variant, @other_nicks);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
-        $count = $profile ? scalar(Profiler::Score::history($profile)) : 0;
+        $count = $profile ? $profile->{total} : 0;
         $r = Profiler::Score::judge($profile, $obs, $now);
         # A nick we barely know, or one that doesn't fit its own history, may
         # be someone familiar on a jupe-driven variant like bob_.
@@ -359,6 +359,7 @@ sub judge {
     my $was = defined $job->{was} ? "was $job->{was}, " : '';
     my $who = "$job->{nick} ($was$job->{ident}\@$job->{host}, client: $job->{version})";
     my $seen = $count ? "seen $count time(s) before" : 'never seen before';
+    $seen .= ", judged on the latest $Profiler::Store::HISTORY_SIZE" if $count > $Profiler::Store::HISTORY_SIZE;
     $seen .= '; changes nicks often, also ' . nick_list(@other_nicks) if @other_nicks;
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
     my $score = sprintf('trust %+.2f (%s, match %+.2f, confidence %.2f)',
@@ -475,9 +476,10 @@ sub cmd_profiler {
 
         my @history = Profiler::Score::history($p);
         my $held = @{ $p->{sightings} } - @history;
-        info("$p->{nick} on $server->{tag}: " . scalar(@history) . " sighting(s)"
-            . ($held ? ", $held quarantined" : '') . ", first "
-            . localtime($p->{first_seen}) . ", last " . localtime($p->{last_seen}));
+        info("$p->{nick} on $server->{tag}: $p->{total} sighting(s), first "
+            . localtime($p->{first_seen}) . ", last " . localtime($p->{last_seen})
+            . "; of the latest " . @{ $p->{sightings} } . ", " . @history . " counted"
+            . ($held ? " and $held quarantined" : ''));
         for my $field (qw(host ip ident realname server version channel)) {
             my %counts;
             $counts{ $_->{$field} }++ for grep { defined $_->{$field} } @history;

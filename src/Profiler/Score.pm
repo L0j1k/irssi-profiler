@@ -178,6 +178,22 @@ sub attribute_score {
     return -$stability * familiarity($total);
 }
 
+# The attribute scores averaged with their weights, using $host_weight for a
+# host that matches.
+sub weighted_match {
+    my ($parts, $host_weight) = @_;
+    my ($sum, $weights) = (0, 0);
+    for my $attr (keys %$parts) {
+        my $s = $parts->{$attr};
+        my $w = $s < 0           ? $CONTRADICT_WEIGHT{$attr}
+              : $attr eq 'host' ? $host_weight
+              :                   $MATCH_WEIGHT{$attr};
+        $sum += $w * $s;
+        $weights += $w;
+    }
+    return $weights ? $sum / $weights : 0;
+}
+
 # Judge an observation (one join plus its whois and VERSION reply) against the
 # nick's history. Returns a hash of:
 #
@@ -202,16 +218,11 @@ sub judge {
     my $solid = defined $key && ($parts{host} // 0) > 0 && ($parts{ident} // 0) >= 0
         && any { (Profiler::Host::solid_key($_->[0]{host}) // '') eq $key } @weighted;
 
-    my ($sum, $weights);
-    for my $attr (keys %parts) {
-        my $s = $parts{$attr};
-        my $w = $s < 0                    ? $CONTRADICT_WEIGHT{$attr}
-              : $attr eq 'host' && $solid ? $SOLID_HOST_WEIGHT
-              :                             $MATCH_WEIGHT{$attr};
-        $sum += $w * $s;
-        $weights += $w;
-    }
-    my $match = $weights ? $sum / $weights : 0;
+    # The match is a weighted average, so a heavy weight pulls it towards the
+    # host's score. A solid host they've used only once, long ago, scores low,
+    # and we don't want that to drag down an otherwise good match.
+    my $match = weighted_match(\%parts, $MATCH_WEIGHT{host});
+    $match = max($match, weighted_match(\%parts, $SOLID_HOST_WEIGHT)) if $solid;
 
     my $verdict = $confidence < $MIN_CONFIDENCE ? 'unknown'
                 : $match < 0                    ? 'suspect'

@@ -89,14 +89,22 @@ generated name (`cpe-198-51-100-202...`, anything with four or more digits
 in its first label, or labels like `dsl`, `dhcp`, `pool`, `cable`, `dyn`)
 or a bare address can be had by anyone on the same ISP. IRCCloud's
 `id-NNN.<server>.irccloud.com` is an account number, so it's the same
-person whichever IRCCloud server they come through.
+person whichever IRCCloud server they come through. A private address
+like `192.168.0.1` (10/8, 172.16/12, 192.168/16, 127/8, IPv6 fc00::/7,
+fe80::/10, ::1) is a spoof: nobody can really connect from one, so a
+server admin gave it to them.
 
-When a nick that has used a custom name or IRCCloud account before turns
-up on it again, the host match counts for 2 instead of 0.40. That makes
-it consistent even if nothing else is known and the channel is new. It
-doesn't apply when the ident disagrees, since a shell provider can give
-several people the same name but not the same ident. A custom name is
-judged even on a hosting company's address.
+When a nick that has used a custom name, IRCCloud account or spoof before
+turns up on it again, the host match counts for 2 instead of 0.40, but
+only if that raises the match. A solid host used once, long ago, never
+lowers it. That makes a regular consistent even if nothing else is known
+and the channel is new. It doesn't apply when the ident disagrees, since a
+shell provider can give several people the same name but not the same
+ident. These hosts are judged even on a hosting company's address.
+
+The "seen N time(s) before" in a verdict counts every sighting of the
+nick. Scoring only looks at the latest 200, and the line says so when
+there are more.
 
 The weights are lopsided on purpose. Ident, realname and version are visible
 to anyone, so an impostor can copy them. Matching them proves little, and

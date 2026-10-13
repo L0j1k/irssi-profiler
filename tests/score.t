@@ -154,6 +154,18 @@ subtest 'an established custom or irccloud host is solid' => sub {
     my $plain = judge($history->(%isp), { %isp, channel => '#chan' });
     my $solid = judge($history->(%gus), { %gus, channel => '#chan' });
     ok($plain->{match} < $solid->{match}, 'an ISP host match counts for less');
+
+    # Their usual ISP host lately, and another host once, two years ago. Back
+    # on that one, it's no worse for being a custom name than an ISP's.
+    my $back_on = sub {
+        my ($host) = @_;
+        my $h = $history->(%isp);
+        push @{ $h->{sightings} }, { %isp, host => $host, time => $NOW - 730 * 86400 };
+        return judge($h, { %isp, host => $host })->{match};
+    };
+    my $old_solid = $back_on->('box.example.org');
+    my $old_isp = $back_on->('cpe-198-51-100-7.elsewhere.example.com');
+    ok($old_solid >= $old_isp, "a solid host seen long ago doesn't drag the match down ($old_solid >= $old_isp)");
 };
 
 subtest 'contradicting an attribute that always varies costs little' => sub {
