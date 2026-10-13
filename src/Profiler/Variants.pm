@@ -16,6 +16,21 @@ use Profiler::Score;
 # profile, so we stop after this many. Linked nicks go first.
 our $MAX_CANDIDATES = 20;
 
+# How many other nicks someone needs to have switched to or from before we
+# mention that they change nicks often.
+our $CHANGES_NICKS_OFTEN_AT = 2;
+
+# The other nicks someone on these nicks has switched with, most recent first,
+# when there are enough of them to be worth saying, or an empty list. Give
+# both sides of a nick change, and neither is listed.
+sub changes_nicks_often {
+    my ($store, $network, @nicks) = @_;
+    my %self = map { lc($_) => 1 } @nicks;
+    my %seen;
+    my @others = grep { !$self{$_} && !$seen{$_}++ } map { $store->linked($network, $_) } @nicks;
+    return @others >= $CHANGES_NICKS_OFTEN_AT ? @others : ();
+}
+
 # Returns the best match as { nick, linked, result } where result is what
 # Profiler::Score::judge said about the observation against that nick's
 # history, or undef when no candidate comes out consistent or mixed.

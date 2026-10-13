@@ -170,7 +170,7 @@ subtest 'nick changes link two nicks, one hop only' => sub {
     $store->link_nicks('efnet', 'bob', 'cybbob', 200);
     $store->link_nicks('efnet', 'bob', 'robert', 300);
     $store->link_nicks('efnet', 'bob', 'BOB', 400);
-    is_deeply([ $store->linked('efnet', 'BOB') ], ['cybbob', 'robert'], 'both ways, each once');
+    is_deeply([ $store->linked('efnet', 'BOB') ], ['robert', 'cybbob'], 'both ways, each once, latest first');
     is_deeply([ $store->linked('efnet', 'cybbob') ], ['bob'], 'not through bob to robert');
     is_deeply([ $store->linked('efnet', 'nobody') ], [], 'no links');
     is_deeply([ $store->linked('other', 'bob') ], [], 'unknown network');

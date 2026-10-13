@@ -160,6 +160,27 @@ consistent or mixed you get a line like:
 
 This doesn't change the joiner's own verdict or what's recorded.
 
+A nick change in a watched channel is profiled like a join under the new
+nick, since `/nick bob` is the easy way to wear bob's nick without joining
+as it. Its verdict line is always shown, verbose or not, and says
+`was <old nick>`. When someone on the nick has switched with at least two
+other nicks, any verdict line about them adds `changes nicks often, also
+zed, lex, lexie` (latest first, up to five).
+
+## Output
+
+Lines are drawn in your theme's `{channick}` colour, the one irssi uses for
+a nick that parts or quits (dark cyan by default). A verdict word at the
+start of a line has its own colour: WARNING bright red, SUSPECT bright
+yellow, MIXED cyan and CONFIDENT bright green. CONFIDENT and MIXED lines
+show with `profiler_verbose` on, or for a nick change. To change a colour,
+override the format in your theme, for example:
+
+    "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n {channick $0}"; };
+
+The formats are `profiler_line`, `profiler_warning`, `profiler_suspect`,
+`profiler_mixed` and `profiler_confident`.
+
 ## Limits
 
 - Proxy detection is keyword matching on registry records. It misses VPNs that

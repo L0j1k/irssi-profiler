@@ -70,4 +70,23 @@ subtest 'unknown network' => sub {
     is(Profiler::Variants::best_match(store_with(), 'other', 'bob_', \%bob, $NOW), undef, 'nothing');
 };
 
+subtest 'someone who changes nicks often' => sub {
+    my $store = store_with();
+    my $t = $NOW;
+    $store->link_nicks('efnet', 'hugo', $_, $t++) for qw(zed lex lexie);
+    $store->link_nicks('efnet', 'lex', 'stranger', $t++);
+
+    my @others = Profiler::Variants::changes_nicks_often($store, 'efnet', 'hugo');
+    is_deeply(\@others, [qw(lexie lex zed)], 'one hop away, latest first');
+    is_deeply([ Profiler::Variants::changes_nicks_often($store, 'efnet', 'Dodo', 'hugo') ], \@others,
+        'from either side of a nick change, leaving both out');
+
+    $store->link_nicks('efnet', 'dodo', 'hugo', $t++);
+    is_deeply([ Profiler::Variants::changes_nicks_often($store, 'efnet', 'dodo', 'hugo') ], \@others,
+        'the change being made is not counted');
+    is_deeply([ Profiler::Variants::changes_nicks_often($store, 'efnet', 'stranger') ], [],
+        'one other nick is not often');
+    is_deeply([ Profiler::Variants::changes_nicks_often($store, 'other', 'hugo') ], [], 'unknown network');
+};
+
 done_testing;

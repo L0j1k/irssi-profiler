@@ -64,12 +64,30 @@ my %recent;
 
 # Our lines are drawn like a nick that parts or quits, so they stand out from
 # the channel without shouting. Going through the theme keeps them in step
-# with whatever colours the user has, and keeps % in the text literal.
-Irssi::theme_register([ profiler_line => '{channick profiler: $0}' ]);
+# with whatever colours the user has, and keeps % in the text literal. A line
+# that leads with a verdict word gets that word in its own colour.
+Irssi::theme_register([
+    profiler_line      => '{channick profiler: $0}',
+    profiler_warning   => '{channick profiler:} %RWARNING%n {channick $0}',
+    profiler_suspect   => '{channick profiler:} %YSUSPECT%n {channick $0}',
+    profiler_mixed     => '{channick profiler:} %CMIXED%n {channick $0}',
+    profiler_confident => '{channick profiler:} %GCONFIDENT%n {channick $0}',
+]);
+
+# Prints one of our lines in a channel's window, or in the status window when
+# there's no channel or the server has gone. $word is WARNING, SUSPECT, MIXED
+# or CONFIDENT for a line that leads with one.
+sub say_in {
+    my ($tag, $channel, $text, $word) = @_;
+    my $format = $word ? 'profiler_' . lc $word : 'profiler_line';
+    my $server = defined $tag ? Irssi::server_find_tag($tag) : undef;
+    return $server->printformat($channel, MSGLEVEL_CLIENTCRAP, $format, $text) if $server && defined $channel;
+    Irssi::printformat(MSGLEVEL_CLIENTCRAP, $format, $text);
+}
 
 sub info {
     my ($text) = @_;
-    Irssi::printformat(MSGLEVEL_CLIENTCRAP, 'profiler_line', $text);
+    say_in(undef, undef, $text);
 }
 
 sub irssi_path {
@@ -125,7 +143,13 @@ sub on_join {
     my ($server, $channel, $nick, $address) = @_;
     return if lc $nick eq lc $server->{nick};
     return unless defined Profiler::Rules::min_trust_for($rules, $server->{tag}, $channel);
+    enqueue($server, $channel, $nick, $address);
+}
 
+# Queues someone in a watched channel for profiling, unless they were profiled
+# there recently. $was is the nick they changed from, for a nick change.
+sub enqueue {
+    my ($server, $channel, $nick, $address, $was) = @_;
     my $now = time;
     my $rkey = recent_key($server->{tag}, $channel, $nick);
     return if $recent{$rkey} && $now - $recent{$rkey} < Irssi::settings_get_int('profiler_recheck');
@@ -133,7 +157,7 @@ sub on_join {
     my ($ident, $host) = split /@/, $address, 2;
     my $job = {
         tag => $server->{tag}, channel => $channel, nick => $nick,
-        ident => $ident, host => $host,
+        ident => $ident, host => $host, was => $was,
     };
     my $queue = queue_for($server->{tag});
     if (!$queue->add($rkey, $job, $now) && $queue->length >= Irssi::settings_get_int('profiler_queue_max')) {
@@ -297,7 +321,7 @@ sub judge {
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
 
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
-    my ($r, $count, $promoted, $variant);
+    my ($r, $count, $promoted, $variant, @other_nicks);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
         $count = $profile ? scalar(Profiler::Score::history($profile)) : 0;
@@ -306,6 +330,7 @@ sub judge {
         # be someone familiar on a jupe-driven variant like bob_.
         $variant = Profiler::Variants::best_match($store, $job->{tag}, $job->{nick}, $obs, $now)
             if $r->{verdict} eq 'unknown' || $r->{verdict} eq 'suspect';
+        @other_nicks = Profiler::Variants::changes_nicks_often($store, $job->{tag}, $job->{nick}, $job->{was} // ());
         $store->record($job->{tag}, $obs, $now, $r->{verdict});
         $promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
             Irssi::settings_get_int('profiler_promote_after_sightings'),
@@ -314,15 +339,12 @@ sub judge {
         1;
     } or return info($@);
 
-    my $server = Irssi::server_find_tag($job->{tag});
-    my $say = sub {
-        my ($text) = @_;
-        return info($text) unless $server;
-        $server->printformat($job->{channel}, MSGLEVEL_CLIENTCRAP, 'profiler_line', $text);
-    };
+    my $say = sub { say_in($job->{tag}, $job->{channel}, @_) };
 
-    my $who = "$job->{nick} ($job->{ident}\@$job->{host}, client: $job->{version})";
+    my $was = defined $job->{was} ? "was $job->{was}, " : '';
+    my $who = "$job->{nick} ($was$job->{ident}\@$job->{host}, client: $job->{version})";
     my $seen = $count ? "seen $count time(s) before" : 'never seen before';
+    $seen .= '; changes nicks often, also ' . nick_list(@other_nicks) if @other_nicks;
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
     my $score = sprintf('trust %+.2f (%s, match %+.2f, confidence %.2f)',
         @$r{qw(trust verdict match confidence)});
@@ -333,21 +355,24 @@ sub judge {
     # whole point: an established nick being worn by somebody else.
     if ($r->{verdict} eq 'suspect') {
         my $when = $job->{netsplit} ? ' during a netsplit rejoin' : '';
-        $say->("SUSPECT $who doesn't match the history of $job->{nick}$when; $score, $seen$why. "
-            . "Quarantined; /profiler accept $job->{nick} if it's really them");
+        $say->("$who doesn't match the history of $job->{nick}$when; $score, $seen$why. "
+            . "Quarantined; /profiler accept $job->{nick} if it's really them", 'SUSPECT');
     }
     # Same person by everything but the host, most likely. A quiet note
     # rather than a warning, so SUSPECT keeps meaning something.
     elsif ($r->{verdict} eq 'new host') {
         my $matches = what_matches($r, qw(ident realname version)) // 'nothing else contradicts';
         my $often = $r->{host_changes_often} ? ' (frequently changes hosts)' : '';
-        $say->("$job->{nick}: new host $job->{ident}\@$job->{host}, $matches$often; $seen");
+        $say->("$job->{nick}: ${was}new host $job->{ident}\@$job->{host}, $matches$often; $seen");
     }
     elsif (Profiler::Rules::below_minimum($r, $min)) {
-        $say->("WARNING $who has $score, under $min; $seen$why");
+        $say->("$who has $score, under $min; $seen$why", 'WARNING');
     }
-    elsif (Irssi::settings_get_bool('profiler_verbose')) {
-        $say->("$who has $score; $seen");
+    # A nick change is always reported, since irssi's own line doesn't say
+    # whether the new nick fits.
+    elsif (Irssi::settings_get_bool('profiler_verbose') || defined $job->{was}) {
+        my %word = (consistent => 'CONFIDENT', mixed => 'MIXED');
+        $say->("$who has $score; $seen", $word{ $r->{verdict} });
     }
 
     if ($variant) {
@@ -365,9 +390,17 @@ sub judge {
 
     if ($hostinfo->{proxy}) {
         my $owner = $hostinfo->{org} // $hostinfo->{netname} // 'unknown owner';
-        $say->("WARNING $who is on a likely VPN, proxy or hosting address "
-            . "($hostinfo->{ip}, $owner, matched '$hostinfo->{proxy}')");
+        $say->("$who is on a likely VPN, proxy or hosting address "
+            . "($hostinfo->{ip}, $owner, matched '$hostinfo->{proxy}')", 'WARNING');
     }
+}
+
+# "a, b, c" for the first few nicks, then how many more there are.
+sub nick_list {
+    my (@nicks) = @_;
+    my $shown = 5;
+    return join(', ', @nicks) if @nicks <= $shown;
+    return join(', ', @nicks[0 .. $shown - 1]) . ' and ' . (@nicks - $shown) . ' more';
 }
 
 # "ident, client match" for the attributes that scored in favour, or undef
@@ -382,14 +415,18 @@ sub what_matches {
 
 # Someone in a watched channel changed nick. That's the same connection, so
 # the two nicks are the same person, and the variant search uses the link.
+# It's also the easy way to wear someone's nick without ever joining as it,
+# so the new nick is profiled in each watched channel like a join.
 sub on_nick {
     my ($server, $new, $old, $address) = @_;
-    my $watched = grep {
+    return if lc $new eq lc $server->{nick};
+    my @watched = grep {
         defined Profiler::Rules::min_trust_for($rules, $server->{tag}, $_->{name})
             && ($_->nick_find($new) || $_->nick_find($old))
     } $server->channels;
-    return unless $watched;
+    return unless @watched;
     eval { $store->link_nicks($server->{tag}, $old, $new, time); $store->flush; 1 } or info($@);
+    enqueue($server, $_->{name}, $new, $address, $old) for @watched;
 }
 
 # irssi calls this when the script is unloaded, which includes quitting.

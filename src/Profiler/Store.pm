@@ -274,12 +274,12 @@ sub link_nicks {
         ON CONFLICT (a, b) DO UPDATE SET last_seen = excluded.last_seen')->execute($first, $second, $now, $now);
 }
 
-# The nicks this one has been linked to directly, sorted.
+# The nicks this one has been linked to directly, most recently used first.
 sub linked {
     my ($self, $network, $nick) = @_;
     my $dbh = $self->db($network) or return ();
-    return @{ $dbh->selectcol_arrayref('SELECT b FROM nick_links WHERE a = ? UNION SELECT a FROM nick_links WHERE b = ?
-        ORDER BY 1', undef, lc $nick, lc $nick) };
+    return @{ $dbh->selectcol_arrayref('SELECT b, last_seen FROM nick_links WHERE a = ?
+        UNION ALL SELECT a, last_seen FROM nick_links WHERE b = ? ORDER BY 2 DESC, 1', undef, lc $nick, lc $nick) };
 }
 
 # Recorded nicks with the same skeleton as this one, other than itself, sorted.

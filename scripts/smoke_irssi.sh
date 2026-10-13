@@ -61,6 +61,21 @@ wait_for "1 extra proxy keyword" || fail "proxy keyword not counted"
 tmux capture-pane -p -e -t "$session" | grep 'loaded 1 watch rule' | grep -q $'\e\\[36m' \
     || fail "profiler lines are not dark cyan"
 
+# Verdict words get their own colour and the rest of the line stays dark
+# cyan. Bright colours come out as bold plus the colour (1 and 3x) or as 9x.
+check_word() {
+    local word="$1" colour="$2" line
+    tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::say_in(undef, undef, 'smoke $word line', '$word')" Enter
+    wait_for "$word smoke $word line" || fail "$word line not printed"
+    line="$(tmux capture-pane -p -e -t "$session" | grep "smoke $word line" | tail -1)"
+    grep -qE $'(\e\\[1m\e\\[3'"$colour"$'m|\e\\[9'"$colour"$'m)'"$word" <<< "$line" || fail "$word is not bright colour $colour"
+    grep -qE $'\e\\[(22;)?36m'" ?smoke $word line" <<< "$line" || fail "text after $word is not dark cyan"
+}
+check_word WARNING 1
+check_word SUSPECT 3
+check_word MIXED 6
+check_word CONFIDENT 2
+
 tmux send-keys -t "$session" "/profiler list" Enter
 wait_for 'efnet #chan 0.5' || fail "/profiler list did not show the watch"
 
