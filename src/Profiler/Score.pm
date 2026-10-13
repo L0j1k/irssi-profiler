@@ -3,9 +3,10 @@ package Profiler::Score;
 use strict;
 use warnings;
 
-use List::Util qw(max sum0);
+use List::Util qw(any max sum0);
 use NetAddr::IP;
 
+use Profiler::Host;
 use Profiler::Version;
 
 # The question we answer is "is this really the person who has been using this
@@ -39,6 +40,12 @@ our $K = 3;
 
 # A sighting this old counts half as much as one from today.
 our $HALF_LIFE = 90 * 86400;
+
+# A host match counts this much instead of its usual weight when the host is
+# a custom name or IRCCloud account the nick has used before (see
+# Profiler::Host), unless the ident disagrees: a shell box can give several
+# people the same name, but not the same ident.
+our $SOLID_HOST_WEIGHT = 2;
 
 # A past sighting from a nearby address (same /24 or /64) counts as this much
 # of a match, and so does one from the same client at another version.
@@ -102,6 +109,12 @@ sub same_pool {
     return $rest_a eq $rest_b && $first_a =~ /\d/ && $first_b =~ /\d/ ? 1 : 0;
 }
 
+sub same_solid_host {
+    my ($a, $b) = @_;
+    my $key = Profiler::Host::solid_key($a) // return 0;
+    return $key eq (Profiler::Host::solid_key($b) // '') ? 1 : 0;
+}
+
 sub age_weight {
     my ($sighting, $now) = @_;
     my $age = max(0, $now - $sighting->{time});
@@ -120,6 +133,7 @@ sub similarity {
     my ($attr, $seen, $obs) = @_;
     if ($attr eq 'host') {
         return 1 if $seen->{host} eq $obs->{host};
+        return 1 if same_solid_host($seen->{host}, $obs->{host});
         if (defined $seen->{ip} && defined $obs->{ip}) {
             return 1 if $seen->{ip} eq $obs->{ip};
             return $SUBNET_CREDIT if same_subnet($seen->{ip}, $obs->{ip});
@@ -140,13 +154,14 @@ sub similarity {
 # one from someone whose ident changes all the time costs next to nothing.
 #
 # Lots of people share a VPN or hosting exit, so the host isn't judged at all
-# when the observation came from one.
+# when the observation came from one. A custom name or IRCCloud account on
+# that address is still somebody's own, so those are judged.
 #
 # $weighted is the history as [sighting, age weight] pairs.
 sub attribute_score {
     my ($attr, $weighted, $obs) = @_;
     return undef unless defined $obs->{$attr};
-    return undef if $attr eq 'host' && $obs->{proxy};
+    return undef if $attr eq 'host' && $obs->{proxy} && !defined Profiler::Host::solid_key($obs->{host});
 
     my ($total, $support, %by_value) = (0, 0);
     for my $pair (@$weighted) {
@@ -178,12 +193,21 @@ sub judge {
     my @weighted = map { [ $_, age_weight($_, $now) ] } $profile ? history($profile) : ();
     my $confidence = familiarity(sum0(map { $_->[1] } @weighted));
 
-    my (%parts, $sum, $weights);
+    my %parts;
     for my $attr (keys %MATCH_WEIGHT) {
         my $s = attribute_score($attr, \@weighted, $obs);
-        next unless defined $s;
-        my $w = $s >= 0 ? $MATCH_WEIGHT{$attr} : $CONTRADICT_WEIGHT{$attr};
-        $parts{$attr} = $s;
+        $parts{$attr} = $s if defined $s;
+    }
+    my $key = defined $obs->{host} ? Profiler::Host::solid_key($obs->{host}) : undef;
+    my $solid = defined $key && ($parts{host} // 0) > 0 && ($parts{ident} // 0) >= 0
+        && any { (Profiler::Host::solid_key($_->[0]{host}) // '') eq $key } @weighted;
+
+    my ($sum, $weights);
+    for my $attr (keys %parts) {
+        my $s = $parts{$attr};
+        my $w = $s < 0                    ? $CONTRADICT_WEIGHT{$attr}
+              : $attr eq 'host' && $solid ? $SOLID_HOST_WEIGHT
+              :                             $MATCH_WEIGHT{$attr};
         $sum += $w * $s;
         $weights += $w;
     }

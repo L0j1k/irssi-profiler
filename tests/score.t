@@ -117,7 +117,7 @@ subtest 'only host, ident, realname or client can make a suspect' => sub {
     # we didn't get to compare, in a channel they'd never been seen in.
     my %logged = map { $_ => $bob{$_} } qw(host ip ident channel);
     my $history = { sightings => [ map { { %logged, time => $NOW } } 1 .. 20 ] };
-    my %proxied = (%logged, host => 'vps.example.org', ip => '192.0.2.9', proxy => 'acme hosting');
+    my %proxied = (%logged, host => '192.0.2.9', ip => '192.0.2.9', proxy => 'acme hosting');
     delete $proxied{ident};
 
     my $r = judge($history, { %proxied, channel => '#elsewhere' });
@@ -126,6 +126,34 @@ subtest 'only host, ident, realname or client can make a suspect' => sub {
 
     is(judge($history, { %proxied, channel => '#elsewhere', ident => 'lol' })->{verdict},
         'suspect', 'a contradicting ident still is');
+};
+
+subtest 'an established custom or irccloud host is solid' => sub {
+    my $history = sub {
+        my (%who) = @_;
+        return { sightings => [ map { { %who, time => $NOW - $_ * 86400 } } 1 .. 6 ] };
+    };
+
+    # On a hosting company's address, in a channel they've never been seen in.
+    my %gus = (host => 'gus.example.org', ident => '~gus', channel => '#other');
+    my $r = judge($history->(%gus), { %gus, channel => '#chan', proxy => 'acme hosting' });
+    ok(defined $r->{parts}{host}, 'the host counts even on a proxy');
+    is($r->{verdict}, 'consistent', "and outweighs the new channel ($r->{verdict}, match $r->{match})");
+
+    my %craig = (host => 'id-100001.helmsley.irccloud.com', ident => 'sid100001', channel => '#chan');
+    $r = judge($history->(%craig), { %craig, host => 'id-100001.charlton.irccloud.com' });
+    is($r->{verdict}, 'consistent', 'irccloud through another server is the same account');
+
+    $r = judge($history->(%gus), { %gus, ident => 'lol' });
+    isnt($r->{verdict}, 'consistent', 'someone else on a shared box is not');
+
+    $r = judge($history->(%gus), { %gus, host => 'elsewhere.example.org', proxy => 'acme hosting' });
+    is($r->{verdict}, 'new host', 'a different custom host is a new host');
+
+    my %isp = (host => 'cpe-198-51-100-202.san.res.example.com', ident => '~bob', channel => '#other');
+    my $plain = judge($history->(%isp), { %isp, channel => '#chan' });
+    my $solid = judge($history->(%gus), { %gus, channel => '#chan' });
+    ok($plain->{match} < $solid->{match}, 'an ISP host match counts for less');
 };
 
 subtest 'contradicting an attribute that always varies costs little' => sub {
@@ -148,8 +176,8 @@ subtest 'nearby address gets partial credit' => sub {
     ok(judge(profile_of(5), \%obs)->{parts}{host} < 0, 'another /24 contradicts');
 };
 
-subtest 'host is not judged on a proxy address' => sub {
-    my $r = judge(profile_of(10), { %troll, proxy => 'vpn' });
+subtest 'host is not judged on a proxy address with no name of its own' => sub {
+    my $r = judge(profile_of(10), { %troll, host => '192.0.2.66', proxy => 'vpn' });
     ok(!exists $r->{parts}{host}, 'no host part');
 };
 

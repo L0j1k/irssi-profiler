@@ -79,7 +79,24 @@ Each attribute of a join scores from -1 to +1 against that history:
   costs almost nothing.
 - **Missing on either side:** skipped. History imported from logs has no
   realname, server or version.
-- **Host on a likely proxy:** skipped too, since many people share those.
+- **Host on a likely proxy:** skipped too, since many people share those,
+  unless it has a custom name or is an IRCCloud account (below).
+
+Host names come in kinds. IRC servers only show a name that resolves back
+to the address, so a name somebody chose, like `irc.example.net`, means
+they control that DNS. That's close to impossible to fake. An ISP's
+generated name (`cpe-198-51-100-202...`, anything with four or more digits
+in its first label, or labels like `dsl`, `dhcp`, `pool`, `cable`, `dyn`)
+or a bare address can be had by anyone on the same ISP. IRCCloud's
+`id-NNN.<server>.irccloud.com` is an account number, so it's the same
+person whichever IRCCloud server they come through.
+
+When a nick that has used a custom name or IRCCloud account before turns
+up on it again, the host match counts for 2 instead of 0.40. That makes
+it consistent even if nothing else is known and the channel is new. It
+doesn't apply when the ident disagrees, since a shell provider can give
+several people the same name but not the same ident. A custom name is
+judged even on a hosting company's address.
 
 The weights are lopsided on purpose. Ident, realname and version are visible
 to anyone, so an impostor can copy them. Matching them proves little, and
