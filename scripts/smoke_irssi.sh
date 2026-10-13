@@ -30,7 +30,7 @@ settings = { core = { nick = "smoketest"; user_name = "smoke"; real_name = "smok
 EOF
 mkdir -p "$home/scripts"
 "$repo/scripts/install.sh" "$home" > /dev/null
-printf 'efnet #chan 0.5\nefnet #bad nope\nproxy acme hosting\n' > "$home/scripts/profiler.rules"
+printf 'efnet #chan 0.5\nefnet #bad 50%%n\nproxy acme hosting\n' > "$home/scripts/profiler.rules"
 
 tmux new-session -d -s "$session" -x 200 -y 50 "irssi --home='$home' --noconnect"
 
@@ -55,7 +55,11 @@ wait_for 'Irssi v' || fail "irssi did not start"
 tmux send-keys -t "$session" "/script load profiler" Enter
 wait_for 'loaded 1 watch rule' || fail "script did not load or read its rules"
 wait_for "line 2: min_trust must" || fail "bad rule line not reported"
+wait_for "got '50%n'" || fail "a % in a message was taken as a colour code"
 wait_for "1 extra proxy keyword" || fail "proxy keyword not counted"
+# Our lines use the theme's {channick}, dark cyan (36) in the default theme.
+tmux capture-pane -p -e -t "$session" | grep 'loaded 1 watch rule' | grep -q $'\e\\[36m' \
+    || fail "profiler lines are not dark cyan"
 
 tmux send-keys -t "$session" "/profiler list" Enter
 wait_for 'efnet #chan 0.5' || fail "/profiler list did not show the watch"

@@ -62,9 +62,14 @@ my %pending;
 # out of a channel is neither whois'ed again nor counted again for a while.
 my %recent;
 
+# Our lines are drawn like a nick that parts or quits, so they stand out from
+# the channel without shouting. Going through the theme keeps them in step
+# with whatever colours the user has, and keeps % in the text literal.
+Irssi::theme_register([ profiler_line => '{channick profiler: $0}' ]);
+
 sub info {
     my ($text) = @_;
-    Irssi::print("profiler: $text", MSGLEVEL_CLIENTCRAP);
+    Irssi::printformat(MSGLEVEL_CLIENTCRAP, 'profiler_line', $text);
 }
 
 sub irssi_path {
@@ -313,7 +318,7 @@ sub judge {
     my $say = sub {
         my ($text) = @_;
         return info($text) unless $server;
-        $server->print($job->{channel}, "profiler: $text", MSGLEVEL_CLIENTCRAP);
+        $server->printformat($job->{channel}, MSGLEVEL_CLIENTCRAP, 'profiler_line', $text);
     };
 
     my $who = "$job->{nick} ($job->{ident}\@$job->{host}, client: $job->{version})";
