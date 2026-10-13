@@ -68,7 +68,17 @@ wait_for 'needs an active server' || fail "/profiler show without a server"
 tmux send-keys -t "$session" "/script unload profiler" Enter
 wait_for 'Unloaded script profiler' || fail "script did not unload"
 
-if tmux capture-pane -p -t "$session" | grep -qiE 'error|died|syntax|undefined subroutine'; then
+# An upgrade is install.sh then a reload in the same irssi, so a changed
+# module must be picked up rather than the copy perl already has in memory.
+echo 'our $SMOKE_UPGRADED = "yes"; 1;' >> "$home/scripts/profiler-lib/Profiler/Score.pm"
+tmux send-keys -t "$session" "/script load profiler" Enter
+wait_for 'Loaded script profiler' || fail "script did not load again"
+tmux send-keys -t "$session" '/script exec Irssi::print("upgraded=" . ($Profiler::Score::SMOKE_UPGRADED // "no"))' Enter
+wait_for 'upgraded=(yes|no)' || fail "could not ask irssi which module is loaded"
+wait_for 'upgraded=yes' || fail "reload kept the old modules"
+tmux send-keys -t "$session" "/script unload profiler" Enter
+
+if tmux capture-pane -p -t "$session" | grep -qiE 'error|died|syntax|undefined subroutine|redefined'; then
     fail "errors on screen"
 fi
 echo "PASS: profiler loads and answers in irssi"

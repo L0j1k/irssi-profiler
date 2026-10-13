@@ -5,6 +5,20 @@ use Irssi;
 use File::Path qw(make_path);
 use JSON::PP;
 use POSIX ();
+use Symbol ();
+
+# irssi keeps one perl for its whole life, and /script unload only throws away
+# this script's own package. Our modules would stay loaded, so after an upgrade
+# `use` would quietly keep the old code. Forget them so a load reads the
+# installed files.
+BEGIN {
+    for my $file (grep { m{^Profiler/} } keys %INC) {
+        (my $package = $file) =~ s{\.pm$}{};
+        $package =~ s{/}{::}g;
+        Symbol::delete_package($package);
+        delete $INC{$file};
+    }
+}
 
 use lib Irssi::get_irssi_dir() . '/scripts/profiler-lib';
 use Profiler::Queue;
@@ -152,7 +166,9 @@ sub send_whois {
     }
     my $entry = $pending{$key} = { jobs => [$job] };
 
-    $server->redirect_event('whois', 1, $job->{nick}, 0, undef, {
+    # irssi's binding reads an empty failure signal as none. Its docs pass
+    # undef, which works but warns.
+    $server->redirect_event('whois', 1, $job->{nick}, 0, '', {
         'event 311' => 'redir profiler_whois_user',
         'event 312' => 'redir profiler_whois_server',
         'event 318' => 'redir profiler_whois_end',
