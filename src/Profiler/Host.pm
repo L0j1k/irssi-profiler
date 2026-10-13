@@ -25,7 +25,7 @@ my $ISP_WORD = qr/^(?:a?dsl|vdsl|dhcp|dyn|dynamic|pool|cable|res|resi|residentia
 my $ISP_DIGITS = 4;
 
 # Hosts repeat a lot, especially during an import, so answers are kept.
-my %kind_cache;
+my (%kind_cache, %key_cache);
 
 sub kind {
     my ($host) = @_;
@@ -62,14 +62,15 @@ sub is_private {
 # or sidNNN in the ident, and users can't choose either.
 sub solid_key {
     my ($host, $ident) = @_;
+    return $key_cache{$host} if exists $key_cache{$host};
     my $kind = kind($host);
+    # Not cached, since it can depend on the ident.
     if ($kind eq 'irccloud') {
         my ($account) = $host =~ /^id-(\d+)\./i;
         ($account) = ($ident // '') =~ /^[us]id(\d+)$/ unless defined $account;
         return defined $account ? "irccloud:$account" : undef;
     }
-    return lc $host if $kind eq 'custom' || $kind eq 'spoof';
-    return undef;
+    return $key_cache{$host} = $kind eq 'custom' || $kind eq 'spoof' ? lc $host : undef;
 }
 
 1;
