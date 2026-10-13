@@ -71,4 +71,13 @@ sub min_trust_for {
     return $min;
 }
 
+# Should a judged join be warned about for falling short of a watch's
+# min_trust? Trust is confidence times match, and a nick we barely know has
+# confidence under 0.5, so it would fall short of any sensible minimum every
+# time. Those stay quiet.
+sub below_minimum {
+    my ($result, $min) = @_;
+    return $result->{verdict} ne 'unknown' && $result->{trust} < $min;
+}
+
 1;

@@ -112,6 +112,22 @@ subtest 'a new host is called out separately when nothing else contradicts' => s
     ok($r->{host_changes_often}, 'is noted as changing hosts often');
 };
 
+subtest 'only host, ident, realname or client can make a suspect' => sub {
+    # Live, from a known nick on a proxy (so the host is skipped) whose ident
+    # we didn't get to compare, in a channel they'd never been seen in.
+    my %logged = map { $_ => $bob{$_} } qw(host ip ident channel);
+    my $history = { sightings => [ map { { %logged, time => $NOW } } 1 .. 20 ] };
+    my %proxied = (%logged, host => 'vps.example.org', ip => '192.0.2.9', proxy => 'acme hosting');
+    delete $proxied{ident};
+
+    my $r = judge($history, { %proxied, channel => '#elsewhere' });
+    ok($r->{match} < 0, "only the channel disagrees, match $r->{match}");
+    is($r->{verdict}, 'mixed', 'which is not enough to call it suspect');
+
+    is(judge($history, { %proxied, channel => '#elsewhere', ident => 'lol' })->{verdict},
+        'suspect', 'a contradicting ident still is');
+};
+
 subtest 'contradicting an attribute that always varies costs little' => sub {
     my $varied = { sightings => [ map { { %bob, ident => "id$_", time => $NOW } } 1 .. 10 ] };
     my $stable = profile_of(10);

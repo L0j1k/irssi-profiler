@@ -204,9 +204,16 @@ sub judge {
         verdict    => $verdict,
         parts      => \%parts,
     );
-    if ($verdict eq 'suspect' && ($parts{host} // 0) < 0 && !grep { ($parts{$_} // 0) < 0 } @IDENTITY_ATTRS) {
-        $r{verdict} = 'new host';
-        $r{host_changes_often} = host_changes_often($profile, $obs);
+    # Channel and server are weak evidence, so on their own they can't make a
+    # suspect. A known nick in a new channel is just mixed.
+    if ($verdict eq 'suspect' && !grep { ($parts{$_} // 0) < 0 } @IDENTITY_ATTRS) {
+        if (($parts{host} // 0) < 0) {
+            $r{verdict} = 'new host';
+            $r{host_changes_often} = host_changes_often($profile, $obs);
+        }
+        else {
+            $r{verdict} = 'mixed';
+        }
     }
     return \%r;
 }

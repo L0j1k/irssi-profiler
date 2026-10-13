@@ -58,4 +58,11 @@ subtest 'min_trust_for' => sub {
     is(Profiler::Rules::min_trust_for($rules, 'efnet', '#nope'), undef, 'unwatched channel');
 };
 
+subtest 'below_minimum' => sub {
+    ok(Profiler::Rules::below_minimum({ verdict => 'mixed', trust => 0.3 }, 0.5), 'a known nick under the minimum');
+    ok(!Profiler::Rules::below_minimum({ verdict => 'consistent', trust => 0.7 }, 0.5), 'a known nick over it');
+    ok(!Profiler::Rules::below_minimum({ verdict => 'unknown', trust => 0.1 }, 0.5),
+        'a nick we barely know is never under it, since its trust always would be');
+};
+
 done_testing;

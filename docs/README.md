@@ -96,10 +96,14 @@ failing to match is telling. A host is hard to fake.
 
 **match** is the weighted average of the attribute scores. **confidence** is
 the familiarity of the total sighting weight. **trust** is `confidence ×
-match`, and that's what the rules' `min_trust` is compared to. The verdict is:
+match`, and that's what the rules' `min_trust` is compared to. Unknown
+nicks are left out of that comparison, since their confidence keeps their
+trust under 0.5 anyway. The verdict is:
 
 - **unknown:** confidence under 0.5, about three fresh sightings.
-- **suspect:** match below 0. Always warned about, whatever the rules say. The
+- **suspect:** match below 0, with at least one of host, ident, realname or
+  client contradicting. If only channel or server disagree, it's mixed
+  instead. Suspects are always warned about, whatever the rules say. The
   sighting is quarantined: kept, but left out of the history, so an
   impostor can't train the profile. The warning notes it if the join came
   during a netsplit rejoin.

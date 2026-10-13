@@ -338,7 +338,7 @@ sub judge {
         my $often = $r->{host_changes_often} ? ' (frequently changes hosts)' : '';
         $say->("$job->{nick}: new host $job->{ident}\@$job->{host}, $matches$often; $seen");
     }
-    elsif ($r->{trust} < $min) {
+    elsif (Profiler::Rules::below_minimum($r, $min)) {
         $say->("WARNING $who has $score, under $min; $seen$why");
     }
     elsif (Irssi::settings_get_bool('profiler_verbose')) {
