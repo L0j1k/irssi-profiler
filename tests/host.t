@@ -20,7 +20,7 @@ subtest 'kinds of host' => sub {
         'customer.dsl.example.net'                 => 'isp',
         'id-100001.helmsley.irccloud.com'          => 'irccloud',
         'ID-100001.Charlton.IRCCloud.com'          => 'irccloud',
-        'ip-198-51-100-7.tinside.irccloud.com'     => 'isp',
+        'tinside.irccloud.com'                     => 'irccloud',
         'irc.example.net'                          => 'custom',
         'gus.example.org'                        => 'custom',
         'box2.example.org'                         => 'custom',
@@ -43,6 +43,13 @@ subtest 'solid keys say when two hosts are the same person' => sub {
         Profiler::Host::solid_key('id-100001.charlton.irccloud.com'), 'one irccloud account, any server');
     isnt(Profiler::Host::solid_key('id-100001.helmsley.irccloud.com'),
         Profiler::Host::solid_key('id-100002.helmsley.irccloud.com'), 'another account');
+    is(Profiler::Host::solid_key('tinside.irccloud.com', 'uid100001'),
+        Profiler::Host::solid_key('id-100001.helmsley.irccloud.com', 'sid100001'),
+        'an irccloud host without the account in it has it in the ident');
+    is(Profiler::Host::solid_key('tinside.irccloud.com', '~bob'), undef, 'or it is not solid');
+    is(Profiler::Host::solid_key('tinside.irccloud.com'), undef, 'nor without an ident');
+    is(Profiler::Host::solid_key('irc.example.net', 'uid100001'), 'irc.example.net',
+        'a uid ident means nothing off irccloud');
     is(Profiler::Host::solid_key('IRC.Example.net'), 'irc.example.net', 'a custom host is itself');
     is(Profiler::Host::solid_key('192.168.0.1'), '192.168.0.1', 'so is a spoof');
     is(Profiler::Host::solid_key($_), undef, "$_ is not solid")

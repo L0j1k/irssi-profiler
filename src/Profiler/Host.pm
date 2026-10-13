@@ -13,7 +13,8 @@ use warnings;
 #   spoof     a private address like 192.168.0.1, which nobody can really
 #             connect from, so a server admin gave it to them
 #   isp       a name an ISP or provider generated, like cpe-198-51-100-202...
-#   irccloud  an IRCCloud account, id-NNN.<server>.irccloud.com
+#   irccloud  an IRCCloud connection, id-NNN.<server>.irccloud.com or just
+#             <server>.irccloud.com with the account in the ident
 #   custom    a name somebody chose
 #   other     anything without a dot
 
@@ -24,7 +25,7 @@ my $ISP_WORD = qr/^(?:a?dsl|vdsl|dhcp|dyn|dynamic|pool|cable|res|resi|residentia
 my $ISP_DIGITS = 4;
 
 # Hosts repeat a lot, especially during an import, so answers are kept.
-my (%kind_cache, %key_cache);
+my %kind_cache;
 
 sub kind {
     my ($host) = @_;
@@ -36,9 +37,7 @@ sub classify {
     return 'spoof' if is_private($host);
     return 'ip' if $host =~ /^[\d.]+$/ || $host =~ /:/;
     return 'other' unless $host =~ /\./;
-    if ($host =~ /\.irccloud\.com$/) {
-        return $host =~ /^id-\d+\./ ? 'irccloud' : 'isp';
-    }
+    return 'irccloud' if $host =~ /\.irccloud\.com$/;
     my ($first) = split /\./, $host;
     return 'isp' if ($first =~ tr/0-9//) >= $ISP_DIGITS;
     return 'isp' if grep { /$ISP_WORD/ } split /\./, $host;
@@ -56,19 +55,19 @@ sub is_private {
     return $host =~ /^(?:f[cd][0-9a-f]{0,2}|fe[89ab][0-9a-f]?):/ || $host eq '::1';
 }
 
-# A key that's the same for two hosts only when they're the same person: the
-# account number for IRCCloud, whichever of its servers they came through,
-# and the host itself for a custom name or a spoof. undef for any other kind.
+# A key that's the same for two connections only when they're the same
+# person: the account number for IRCCloud, whichever of its servers they came
+# through, and the host itself for a custom name or a spoof. undef for any
+# other kind. IRCCloud gives the account as id-NNN in the host or as uidNNN
+# or sidNNN in the ident, and users can't choose either.
 sub solid_key {
-    my ($host) = @_;
-    return $key_cache{$host} if exists $key_cache{$host};
-    return $key_cache{$host} = make_solid_key($host);
-}
-
-sub make_solid_key {
-    my ($host) = @_;
+    my ($host, $ident) = @_;
     my $kind = kind($host);
-    return 'irccloud:' . ($host =~ /^id-(\d+)\./i)[0] if $kind eq 'irccloud';
+    if ($kind eq 'irccloud') {
+        my ($account) = $host =~ /^id-(\d+)\./i;
+        ($account) = ($ident // '') =~ /^[us]id(\d+)$/ unless defined $account;
+        return defined $account ? "irccloud:$account" : undef;
+    }
     return lc $host if $kind eq 'custom' || $kind eq 'spoof';
     return undef;
 }

@@ -109,10 +109,16 @@ sub same_pool {
     return $rest_a eq $rest_b && $first_a =~ /\d/ && $first_b =~ /\d/ ? 1 : 0;
 }
 
+# The solid key (see Profiler::Host) of a sighting or observation, or undef.
+sub solid_key_of {
+    my ($s) = @_;
+    return defined $s->{host} ? Profiler::Host::solid_key($s->{host}, $s->{ident}) : undef;
+}
+
 sub same_solid_host {
-    my ($a, $b) = @_;
-    my $key = Profiler::Host::solid_key($a) // return 0;
-    return $key eq (Profiler::Host::solid_key($b) // '') ? 1 : 0;
+    my ($seen, $obs) = @_;
+    my $key = solid_key_of($seen) // return 0;
+    return $key eq (solid_key_of($obs) // '') ? 1 : 0;
 }
 
 sub age_weight {
@@ -133,7 +139,7 @@ sub similarity {
     my ($attr, $seen, $obs) = @_;
     if ($attr eq 'host') {
         return 1 if $seen->{host} eq $obs->{host};
-        return 1 if same_solid_host($seen->{host}, $obs->{host});
+        return 1 if same_solid_host($seen, $obs);
         if (defined $seen->{ip} && defined $obs->{ip}) {
             return 1 if $seen->{ip} eq $obs->{ip};
             return $SUBNET_CREDIT if same_subnet($seen->{ip}, $obs->{ip});
@@ -161,7 +167,7 @@ sub similarity {
 sub attribute_score {
     my ($attr, $weighted, $obs) = @_;
     return undef unless defined $obs->{$attr};
-    return undef if $attr eq 'host' && $obs->{proxy} && !defined Profiler::Host::solid_key($obs->{host});
+    return undef if $attr eq 'host' && $obs->{proxy} && !defined solid_key_of($obs);
 
     my ($total, $support, %by_value) = (0, 0);
     for my $pair (@$weighted) {
@@ -214,9 +220,8 @@ sub judge {
         my $s = attribute_score($attr, \@weighted, $obs);
         $parts{$attr} = $s if defined $s;
     }
-    my $key = defined $obs->{host} ? Profiler::Host::solid_key($obs->{host}) : undef;
-    my $solid = defined $key && ($parts{host} // 0) > 0 && ($parts{ident} // 0) >= 0
-        && any { (Profiler::Host::solid_key($_->[0]{host}) // '') eq $key } @weighted;
+    my $solid = defined solid_key_of($obs) && ($parts{host} // 0) > 0 && ($parts{ident} // 0) >= 0
+        && any { same_solid_host($_->[0], $obs) } @weighted;
 
     # The match is a weighted average, so a heavy weight pulls it towards the
     # host's score. A solid host they've used only once, long ago, scores low,

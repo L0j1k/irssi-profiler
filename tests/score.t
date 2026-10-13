@@ -143,6 +143,8 @@ subtest 'an established custom or irccloud host is solid' => sub {
     my %craig = (host => 'id-100001.helmsley.irccloud.com', ident => 'sid100001', channel => '#chan');
     $r = judge($history->(%craig), { %craig, host => 'id-100001.charlton.irccloud.com' });
     is($r->{verdict}, 'consistent', 'irccloud through another server is the same account');
+    $r = judge($history->(%craig), { %craig, host => 'tinside.irccloud.com' });
+    is($r->{verdict}, 'consistent', 'and so is one with the account only in the ident');
 
     $r = judge($history->(%gus), { %gus, ident => 'lol' });
     isnt($r->{verdict}, 'consistent', 'someone else on a shared box is not');
