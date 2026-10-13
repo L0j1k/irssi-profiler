@@ -91,7 +91,9 @@ or a bare address can be had by anyone on the same ISP. IRCCloud's
 `id-NNN.<server>.irccloud.com` is an account number, so it's the same
 person whichever IRCCloud server they come through. When the host is just
 `<server>.irccloud.com`, the account comes from the `uidNNN` or `sidNNN`
-ident, which IRCCloud sets and users can't. A private address
+ident, which IRCCloud sets and users can't. `uid` is the free tier and
+`sid` a subscription, so `uid100001` and `sid100001` count as the same
+ident. A private address
 like `192.168.0.1` (10/8, 172.16/12, 192.168/16, 127/8, IPv6 fc00::/7,
 fe80::/10, ::1) is a spoof: nobody can really connect from one, so a
 server admin gave it to them.

@@ -147,6 +147,13 @@ sub similarity {
         return same_pool($seen->{host}, $obs->{host}) ? $SUBNET_CREDIT : 0;
     }
     return 1 if $seen->{$attr} eq $obs->{$attr};
+    # IRCCloud idents are uidNNN on the free tier and sidNNN with a
+    # subscription, so the same account can turn up with either.
+    if ($attr eq 'ident') {
+        my ($seen_account) = $seen->{ident} =~ /^[us]id(\d+)$/ or return 0;
+        my ($obs_account) = $obs->{ident} =~ /^[us]id(\d+)$/ or return 0;
+        return $seen_account eq $obs_account ? 1 : 0;
+    }
     if ($attr eq 'version') {
         return Profiler::Version::client($seen->{version}) eq Profiler::Version::client($obs->{version})
             ? $CLIENT_CREDIT : 0;

@@ -145,6 +145,10 @@ subtest 'an established custom or irccloud host is solid' => sub {
     is($r->{verdict}, 'consistent', 'irccloud through another server is the same account');
     $r = judge($history->(%craig), { %craig, host => 'tinside.irccloud.com' });
     is($r->{verdict}, 'consistent', 'and so is one with the account only in the ident');
+    $r = judge($history->(%craig), { %craig, host => 'tinside.irccloud.com', ident => 'uid100001' });
+    ok($r->{parts}{ident} > 0, 'a lapsed subscription (sid to uid) is the same ident');
+    is($r->{verdict}, 'consistent', 'and the same account');
+    ok(judge($history->(%craig), { %craig, ident => 'uid100002' })->{parts}{ident} < 0, 'another account is not');
 
     $r = judge($history->(%gus), { %gus, ident => 'lol' });
     isnt($r->{verdict}, 'consistent', 'someone else on a shared box is not');
