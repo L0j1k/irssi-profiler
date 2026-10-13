@@ -11,6 +11,7 @@ use Profiler::Queue;
 use Profiler::Rules;
 use Profiler::Score;
 use Profiler::Store;
+use Profiler::Variants;
 use Profiler::Version;
 use Profiler::Whois;
 
@@ -275,11 +276,15 @@ sub judge {
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
 
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
-    my ($r, $count, $promoted);
+    my ($r, $count, $promoted, $variant);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
         $count = $profile ? scalar(Profiler::Score::history($profile)) : 0;
         $r = Profiler::Score::judge($profile, $obs, $now);
+        # A nick we barely know, or one that doesn't fit its own history, may
+        # be someone familiar on a jupe-driven variant like bob_.
+        $variant = Profiler::Variants::best_match($store, $job->{tag}, $job->{nick}, $obs, $now)
+            if $r->{verdict} eq 'unknown' || $r->{verdict} eq 'suspect';
         $store->record($job->{tag}, $obs, $now, $r->{verdict});
         $promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
             Irssi::settings_get_int('profiler_promote_after_sightings'),
@@ -313,9 +318,7 @@ sub judge {
     # Same person by everything but the host, most likely. A quiet note
     # rather than a warning, so SUSPECT keeps meaning something.
     elsif ($r->{verdict} eq 'new host') {
-        my %label = (ident => 'ident', realname => 'realname', version => 'client');
-        my @same = map { $label{$_} } grep { ($r->{parts}{$_} // 0) > 0 } qw(ident realname version);
-        my $matches = @same ? join(', ', @same) . (@same == 1 ? ' matches' : ' match') : 'nothing else contradicts';
+        my $matches = what_matches($r, qw(ident realname version)) // 'nothing else contradicts';
         my $often = $r->{host_changes_often} ? ' (frequently changes hosts)' : '';
         $say->("$job->{nick}: new host $job->{ident}\@$job->{host}, $matches$often; $seen");
     }
@@ -324,6 +327,14 @@ sub judge {
     }
     elsif (Irssi::settings_get_bool('profiler_verbose')) {
         $say->("$who has $score; $seen");
+    }
+
+    if ($variant) {
+        my $v = $variant->{result};
+        my $how = $variant->{linked} ? ", who they've switched nicks with before" : '';
+        my $matches = what_matches($v, qw(host ident realname version)) // 'nothing contradicts';
+        $say->(sprintf('%s looks like %s%s: %s; trust %+.2f against their history',
+            $job->{nick}, $variant->{nick}, $how, $matches, $v->{trust}));
     }
 
     if ($promoted) {
@@ -336,6 +347,28 @@ sub judge {
         $say->("WARNING $who is on a likely VPN, proxy or hosting address "
             . "($hostinfo->{ip}, $owner, matched '$hostinfo->{proxy}')");
     }
+}
+
+# "ident, client match" for the attributes that scored in favour, or undef
+# when none did.
+sub what_matches {
+    my ($r, @attrs) = @_;
+    my %label = (host => 'host', ident => 'ident', realname => 'realname', version => 'client');
+    my @same = map { $label{$_} } grep { ($r->{parts}{$_} // 0) > 0 } @attrs;
+    return undef unless @same;
+    return join(', ', @same) . (@same == 1 ? ' matches' : ' match');
+}
+
+# Someone in a watched channel changed nick. That's the same connection, so
+# the two nicks are the same person, and the variant search uses the link.
+sub on_nick {
+    my ($server, $new, $old, $address) = @_;
+    my $watched = grep {
+        defined Profiler::Rules::min_trust_for($rules, $server->{tag}, $_->{name})
+            && ($_->nick_find($new) || $_->nick_find($old))
+    } $server->channels;
+    return unless $watched;
+    eval { $store->link_nicks($server->{tag}, $old, $new, time); $store->flush; 1 } or info($@);
 }
 
 # irssi calls this when the script is unloaded, which includes quitting.
@@ -425,6 +458,7 @@ Irssi::settings_add_int('profiler', 'profiler_promote_after_days', $Profiler::Sc
 Irssi::settings_add_bool('profiler', 'profiler_verbose', 0);
 
 Irssi::signal_add('message join', \&on_join);
+Irssi::signal_add('message nick', \&on_nick);
 Irssi::signal_add('redir profiler_whois_user', \&on_whois_user);
 Irssi::signal_add('redir profiler_whois_server', \&on_whois_server);
 Irssi::signal_add('redir profiler_whois_end', \&on_whois_end);

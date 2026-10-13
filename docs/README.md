@@ -133,6 +133,29 @@ Quarantine needs nothing from you. When you have time, `/profiler suspects`
 lists quarantined sightings. `/profiler accept <nick>` lets them count (they
 really did move), and `/profiler reject <nick>` files them away.
 
+## Nick variants
+
+On EFnet a juped nick sends people to bob_, bobbb or B0B`. When a joiner's
+own verdict is unknown or suspect, the profiler also compares them with two
+kinds of related nick:
+
+- **Linked nicks:** ones they've switched to or from with /nick, in your
+  logs or live. A nick change is the same connection, so it's proof. Only
+  direct links count, so a generic nick like "away" can't chain strangers
+  together.
+- **Same skeleton:** the nick lowercased, with `|suffix` dropped, junk
+  (`_` `` ` `` `^` `-` `|` brackets) stripped from the ends and digits from
+  the end, leet digits read as letters, and repeated letters collapsed.
+  bob_, bobbb, B0B`, bob2 and [bob] are all `bob`. bobby isn't.
+
+Each candidate (at most 20) is judged on host and ident like any other
+join. The nick only picks who to compare with. If the best one comes out
+consistent or mixed you get a line like:
+
+    bob_ looks like bob, who they've switched nicks with before: host, ident match; trust +0.71 against their history
+
+This doesn't change the joiner's own verdict or what's recorded.
+
 ## Limits
 
 - Proxy detection is keyword matching on registry records. It misses VPNs that
@@ -140,7 +163,10 @@ really did move), and `/profiler reject <nick>` files them away.
   in their name. Add `proxy <keyword>` lines to tune it.
 - Cloaked hosts (`user/bob`) can't be resolved, so they get no subnet or
   proxy check.
-- Profiles are keyed by nick. Someone who changes nick starts from zero.
+- Profiles are keyed by nick. A variant nick gets its own profile from
+  zero, and the variant search (above) is what connects it to the usual one.
+- The variant search only looks one nick change away, and only at nicks
+  whose skeleton matches. bob → robert → rob finds robert from bob, not rob.
 
 ## Tests
 
