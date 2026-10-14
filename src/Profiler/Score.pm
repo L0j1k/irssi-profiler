@@ -147,6 +147,9 @@ sub similarity {
         return same_pool($seen->{host}, $obs->{host}) ? $SUBNET_CREDIT : 0;
     }
     return 1 if $seen->{$attr} eq $obs->{$attr};
+    # Channel names aren't case sensitive. The store keeps them lowercased,
+    # but a join arrives as the channel was typed.
+    return lc $seen->{channel} eq lc $obs->{channel} ? 1 : 0 if $attr eq 'channel';
     # IRCCloud idents are uidNNN on the free tier and sidNNN with a
     # subscription, so the same account can turn up with either.
     if ($attr eq 'ident') {

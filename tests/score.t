@@ -60,6 +60,12 @@ subtest 'the usual person is consistent' => sub {
     ok($r->{trust} > 0.5 && $r->{trust} < 1, "trust $r->{trust}");
 };
 
+subtest 'channel names match whatever their case' => sub {
+    # The store keeps channels lowercased, and joins arrive as typed.
+    my $r = judge(profile_of(10), { %bob, channel => '#CHAN' });
+    is($r->{parts}{channel}, judge(profile_of(10), \%bob)->{parts}{channel}, '#CHAN is #chan');
+};
+
 subtest 'more history means more trust' => sub {
     my $t3 = judge(profile_of(3), \%bob)->{trust};
     my $t30 = judge(profile_of(30), \%bob)->{trust};
