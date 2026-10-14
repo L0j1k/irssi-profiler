@@ -194,7 +194,7 @@ nick, since `/nick bob` is the easy way to wear bob's nick without joining
 as it. Its verdict line is always shown, verbose or not, and says
 `was <old nick>`. When someone on the nick has switched with at least two
 other nicks, any verdict line about them adds `changes nicks often, also
-zed, lex, lexie` (latest first, up to five).
+zed, lex, lexie` (latest first, up to three).
 
 ## Output
 
@@ -214,7 +214,8 @@ someone starts with a one-word summary in its own colour:
 | MOVED     | grey          | held sightings promoted to a new usual host |
 
 CONFIDENT, MIXED and UNKNOWN lines show with `profiler_verbose` on, or for
-a nick change. To change a colour, override the format in your theme, for
+a nick change. A join from a likely proxy always gets one line. It says
+WARNING in place of any word but SUSPECT, and still gives the verdict. To change a colour, override the format in your theme, for
 example:
 
     "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n {channick $0}"; };

@@ -22,6 +22,7 @@ BEGIN {
 
 use lib Irssi::get_irssi_dir() . '/scripts/profiler-lib';
 use Profiler::Queue;
+use Profiler::Report;
 use Profiler::Rules;
 use Profiler::Score;
 use Profiler::Store;
@@ -356,45 +357,19 @@ sub judge {
 
     my $say = sub { say_in($job->{tag}, $job->{channel}, @_) };
 
-    my $was = defined $job->{was} ? "was $job->{was}, " : '';
-    my $who = "$job->{nick} ($was$job->{ident}\@$job->{host}, client: $job->{version})";
-    my $seen = $count ? "seen $count time(s) before" : 'never seen before';
-    $seen .= ", judged on the latest $Profiler::Store::HISTORY_SIZE" if $count > $Profiler::Store::HISTORY_SIZE;
-    $seen .= '; changes nicks often, also ' . nick_list(@other_nicks) if @other_nicks;
-    my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
-    my $score = sprintf('trust %+.2f (%s, match %+.2f, confidence %.2f)',
-        @$r{qw(trust verdict match confidence)});
-    my $why = join ' ', map { sprintf('%s=%+.2f', $_, $r->{parts}{$_}) } sort keys %{ $r->{parts} };
-    $why = " [$why]" if $why;
-
-    # Suspects are always shown, whatever the rules say, since they are the
-    # whole point: an established nick being worn by somebody else.
-    if ($r->{verdict} eq 'suspect') {
-        my $when = $job->{netsplit} ? ' during a netsplit rejoin' : '';
-        $say->("$who doesn't match the history of $job->{nick}$when; $score, $seen$why. "
-            . "Quarantined; /profiler accept $job->{nick} if it's really them", 'SUSPECT');
-    }
-    # Same person by everything but the host, most likely. A quiet note
-    # rather than a warning, so SUSPECT keeps meaning something.
-    elsif ($r->{verdict} eq 'new host') {
-        my $matches = what_matches($r, qw(ident realname version)) // 'nothing else contradicts';
-        my $often = $r->{host_changes_often} ? ' (frequently changes hosts)' : '';
-        $say->("$job->{nick} (${was}$job->{ident}\@$job->{host}): $matches$often; $seen", 'NEW HOST');
-    }
-    elsif (Profiler::Rules::below_minimum($r, $min)) {
-        $say->("$who has $score, under $min; $seen$why", 'WARNING');
-    }
-    # A nick change is always reported, since irssi's own line doesn't say
-    # whether the new nick fits.
-    elsif (Irssi::settings_get_bool('profiler_verbose') || defined $job->{was}) {
-        my %word = (consistent => 'CONFIDENT', mixed => 'MIXED', unknown => 'UNKNOWN');
-        $say->("$who has $score; $seen", $word{ $r->{verdict} });
-    }
+    my ($word, $text) = Profiler::Report::verdict_line($job, $r, {
+        count       => $count,
+        other_nicks => \@other_nicks,
+        min         => Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0,
+        verbose     => Irssi::settings_get_bool('profiler_verbose'),
+        hostinfo    => $hostinfo,
+    });
+    $say->($text, $word) if $word;
 
     if ($variant) {
         my $v = $variant->{result};
         my $how = $variant->{linked} ? ", who they've switched nicks with before" : '';
-        my $matches = what_matches($v, qw(host ident realname version)) // 'nothing contradicts';
+        my $matches = Profiler::Report::what_matches($v, qw(host ident realname version)) // 'nothing contradicts';
         $say->(sprintf('%s looks like %s%s: %s; trust %+.2f against their history',
             $job->{nick}, $variant->{nick}, $how, $matches, $v->{trust}), 'VARIANT');
     }
@@ -403,30 +378,6 @@ sub judge {
         $say->("$job->{nick} looks like they have a new usual host: $promoted quarantined sighting(s) like this one "
             . "now count toward their history. /profiler show $job->{nick} to check", 'MOVED');
     }
-
-    if ($hostinfo->{proxy}) {
-        my $owner = $hostinfo->{org} // $hostinfo->{netname} // 'unknown owner';
-        $say->("$who is on a likely VPN, proxy or hosting address "
-            . "($hostinfo->{ip}, $owner, matched '$hostinfo->{proxy}')", 'WARNING');
-    }
-}
-
-# "a, b, c" for the first few nicks, then how many more there are.
-sub nick_list {
-    my (@nicks) = @_;
-    my $shown = 5;
-    return join(', ', @nicks) if @nicks <= $shown;
-    return join(', ', @nicks[0 .. $shown - 1]) . ' and ' . (@nicks - $shown) . ' more';
-}
-
-# "ident, client match" for the attributes that scored in favour, or undef
-# when none did.
-sub what_matches {
-    my ($r, @attrs) = @_;
-    my %label = (host => 'host', ident => 'ident', realname => 'realname', version => 'client');
-    my @same = map { $label{$_} } grep { ($r->{parts}{$_} // 0) > 0 } @attrs;
-    return undef unless @same;
-    return join(', ', @same) . (@same == 1 ? ' matches' : ' match');
 }
 
 # Someone in a watched channel changed nick. That's the same connection, so
