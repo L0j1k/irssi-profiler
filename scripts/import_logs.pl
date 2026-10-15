@@ -30,7 +30,7 @@
 # Then install the result with the script unloaded, since irssi keeps the
 # database open:
 #   /script unload profiler
-#   cp build/profiler-data/<network>.sqlite ~/.irssi/scripts/profiler-data/
+#   scripts/install_db.sh <network>
 #   /script load profiler
 use strict;
 use warnings;

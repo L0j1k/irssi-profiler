@@ -30,10 +30,13 @@ been running all along.
 
     scripts/import_logs.pl --logs ~/irclogs/EFNet --network efnet
     /script unload profiler
-    cp build/profiler-data/efnet.sqlite ~/.irssi/scripts/profiler-data/
+    scripts/install_db.sh efnet
     /script load profiler
 
-Unload the script before copying, since irssi keeps the database open.
+`install_db.sh` refuses to run while irssi still has the database open. A
+plain `cp` over an open database leaves irssi's write-ahead log beside the new
+file, and SQLite replays it into the new file, which corrupts it. The old
+database is kept as `efnet.sqlite.old`.
 `--network` must be the irssi server tag. Logs only hold nick, ident, host,
 channel and time, so imported sightings have no realname, server or version,
 and no host lookups are done. On a synthetic year of 182k joins it takes
