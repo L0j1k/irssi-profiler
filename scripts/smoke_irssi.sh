@@ -75,6 +75,7 @@ bright() { echo $'(\e\\[1m\e\\[3'"$1"$'m|\e\\[9'"$1"$'m)'; }
 grey=$'\e\\[(22;)?37m'
 check_word WARNING "$(bright 1)"
 check_word UNPROVEN "$(bright 5)"
+check_word EVADER "$(bright 1)"
 check_word SUSPECT "$(bright 3)"
 check_word MIXED "$(bright 6)"
 check_word CONFIDENT "$(bright 2)"
@@ -122,6 +123,12 @@ sleep 0.5
 sleep 2
 tmux send-keys -t "$session" "/profiler list" Enter
 wait_for '0 lookup\(s\) waiting' || fail "the stuck lookup never gave up"
+
+# Kicks and bans in a watched channel are recorded, and /profiler show lists
+# them even for a nick never seen joining. Fake server and channel objects
+# stand in for a real network.
+tmux send-keys -t "$session" '/script exec package SmokeServer; package SmokeChannel; sub nicks { ({ nick => "smoketroll", host => "~t\@smoke.example" }) } package main; our $s = bless({ tag => "efnet" }, "SmokeServer"); Irssi::Script::profiler::on_kick($s, "#CHAN", "smoketroll", "smokeop", "o\@op.example", "smoke reason"); Irssi::Script::profiler::on_ban_new(bless({ name => "#chan", server => $s }, "SmokeChannel"), { ban => "*!*\@smoke.example", setby => "smokeop!o\@op.example", time => 1700000000 }); Irssi::Script::profiler::cmd_profiler("show smoketroll", $s)' Enter
+wait_for 'banned 1x, kicked 1x' || fail "kicks and bans not recorded or not shown"
 
 tmux send-keys -t "$session" "/profiler show bob" Enter
 wait_for 'needs an active server' || fail "/profiler show without a server"

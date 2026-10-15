@@ -234,6 +234,38 @@ as it. Its verdict line is always shown, verbose or not, and says
 other nicks, any verdict line about them adds `changes nicks often, also
 zed, lex, lexie` (latest first, up to three).
 
+## Kicks, bans and evaders
+
+Trolls get kicked and banned far more than regulars, so kicks and bans in
+watched channels are recorded, live and from the logs. They're kept apart
+from trust, which only asks whether a join is the usual person behind its
+nick.
+
+- **Who it hit.** Anyone can wear a nick, so each kick or ban keeps the
+  ident and host of whoever had the nick. For a kick that's the nick's
+  latest sighting (irssi only gives the kicker's address). A ban is matched
+  to the people in the channel whose nick!ident@host fits the mask (live)
+  or who joined in the week before it (logs). A ban fitting more than three
+  nicks is too broad to say who it was for. Lifted bans are ignored, since
+  bans get lifted to keep the list short.
+- **How much it counts.** A ban counts 1 for good. A kick counts 0.5 and
+  fades on `profiler_half_life_days`. A record counts from 0.25: any ban,
+  or a kick within the last half-life.
+- **On the nick's own line.** A nick whose record counts always gets its
+  line, ending with something like `kicked 2x, banned 1x, last 2026-09-02
+  by alice (shamed)`. `/profiler show <nick>` lists the record and who
+  each one hit.
+- **EVADER.** Every join is compared with the people whose record counts,
+  under any other nick. Ones sharing the ident or a related host (same
+  address, subnet, ISP pool or ISP, or a custom name) with a kick or ban
+  are judged against that person: the nick's sightings that look like the
+  one who was hit, plus the kicks and bans themselves. Trolls are often
+  kicked after a join or two, so the match alone decides: at least 0.25, as
+  for a consistent verdict. That gives a line like `EVADER n3wguy
+  (~lol@cpe-1-2-9-9.res.example.net) looks like trollguy (kicked 1x, last
+  ...): host, ident match; match +0.80 against them`. A common ident on a
+  big ISP can match a stranger, so read what matched.
+
 ## Output
 
 Lines are drawn in your theme's `{channick}` colour, the one irssi uses for
@@ -243,6 +275,7 @@ someone starts with a one-word summary in its own colour:
 | word      | colour        | means |
 |-----------|---------------|-------|
 | WARNING   | bright red    | under the channel's min_trust with something against them, or on a likely proxy that's new for them |
+| EVADER    | bright red    | looks like someone who was kicked or banned, under another nick |
 | UNPROVEN  | bright purple | under the channel's min_trust, but everything matches: just not much history yet |
 | SUSPECT   | bright yellow | doesn't match the nick's history |
 | MIXED     | bright cyan   | partly matches |

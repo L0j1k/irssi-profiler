@@ -21,6 +21,8 @@ BEGIN {
 }
 
 use lib Irssi::get_irssi_dir() . '/scripts/profiler-lib';
+use Profiler::Evasion;
+use Profiler::Marks;
 use Profiler::Queue;
 use Profiler::Report;
 use Profiler::Rules;
@@ -70,6 +72,7 @@ my %recent;
 # read at a glance.
 my %WORD_COLOUR = (
     WARNING     => '%R',
+    EVADER      => '%R',
     UNPROVEN    => '%M',
     SUSPECT     => '%Y',
     MIXED       => '%C',
@@ -364,11 +367,14 @@ sub judge {
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
 
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
-    my ($r, $count, $promoted, $variant, @other_nicks);
+    my ($r, $count, $promoted, $variant, $evasion, @other_nicks, @marks);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
         $count = $profile ? $profile->{total} : 0;
         $r = Profiler::Score::judge($profile, $obs, $now);
+        my $own = $store->all_marks($job->{tag})->{ lc $job->{nick} } // [];
+        @marks = @$own if Profiler::Marks::counts($own, $now);
+        $evasion = Profiler::Evasion::best_match($store, $job->{tag}, $job->{nick}, $obs, $now);
         # A nick we barely know, or one that doesn't fit its own history, may
         # be someone familiar on a jupe-driven variant like bob_.
         $variant = Profiler::Variants::best_match($store, $job->{tag}, $job->{nick}, $obs, $now)
@@ -390,6 +396,7 @@ sub judge {
         min         => Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0,
         verbose     => Irssi::settings_get_bool('profiler_verbose'),
         hostinfo    => $hostinfo,
+        marks       => \@marks,
     });
     if ($variant) {
         my $variant_word;
@@ -400,10 +407,49 @@ sub judge {
         $say->($text, $word);
     }
 
+    if ($evasion) {
+        my ($evader_word, $evader_text) = Profiler::Report::evader_line($job, $evasion);
+        $say->($evader_text, $evader_word);
+    }
+
     if ($promoted) {
         $say->("$job->{nick} looks like they have a new usual host: $promoted quarantined sighting(s) like this one "
             . "now count toward their history. /profiler show $job->{nick} to check", 'MOVED');
     }
+}
+
+# Someone was kicked from a watched channel. irssi gives the kicker's
+# address, not theirs, so who it hit comes from the nick's latest sighting.
+sub on_kick {
+    my ($server, $channel, $nick, $kicker, undef, $reason) = @_;
+    return unless defined Profiler::Rules::min_trust_for($rules, $server->{tag}, $channel);
+    eval {
+        my $p = $store->profile($server->{tag}, $nick);
+        my $last = $p ? $p->{sightings}[-1] : {};
+        $store->record_kick($server->{tag}, { nick => $nick, ident => $last->{ident}, host => $last->{host},
+            channel => $channel, by => $kicker, reason => $reason }, time);
+        $store->flush;
+        1;
+    } or info($@);
+}
+
+# A ban was set in a watched channel, or turned up when irssi read the ban
+# list on joining it. It's matched to whoever is in the channel now.
+sub on_ban_new {
+    my ($channel, $ban) = @_;
+    my $tag = $channel->{server}{tag};
+    return unless defined Profiler::Rules::min_trust_for($rules, $tag, $channel->{name});
+    my @here = map {
+        my ($ident, $host) = split /@/, $_->{host} // '', 2;
+        { nick => $_->{nick}, ident => $ident, host => $host }
+    } $channel->nicks;
+    (my $by = $ban->{setby} // '') =~ s/!.*//;
+    eval {
+        $store->record_ban($tag, { channel => $channel->{name}, mask => $ban->{ban}, by => $by }, $ban->{time},
+            Profiler::Marks::banned($ban->{ban}, [ grep { defined $_->{host} } @here ]));
+        $store->flush;
+        1;
+    } or info($@);
 }
 
 # Someone in a watched channel changed nick. That's the same connection, so
@@ -448,8 +494,10 @@ sub cmd_profiler {
     }
     elsif ($subcmd eq 'show' && length $arg) {
         return info("/profiler show needs an active server") unless $server;
-        my $p = eval { $store->profile($server->{tag}, $arg) };
+        my ($p, @marks) = eval { ($store->profile($server->{tag}, $arg), $store->marks($server->{tag}, $arg)) };
         return info($@) if $@;
+        info("$arg on $server->{tag}: " . Profiler::Marks::summary(\@marks)
+            . '; ' . join(', ', map { $_->{ident} ? "$_->{ident}\@$_->{host}" : '(address unknown)' } @marks)) if @marks;
         return info("no profile for $arg on $server->{tag}") unless $p;
 
         my @history = Profiler::Score::history($p);
@@ -513,6 +561,8 @@ Irssi::settings_add_bool('profiler', 'profiler_verbose', 0);
 
 Irssi::signal_add('message join', \&on_join);
 Irssi::signal_add('message nick', \&on_nick);
+Irssi::signal_add('message kick', \&on_kick);
+Irssi::signal_add('ban new', \&on_ban_new);
 Irssi::signal_add('redir profiler_whois_user', \&on_whois_user);
 Irssi::signal_add('redir profiler_whois_server', \&on_whois_server);
 Irssi::signal_add('redir profiler_whois_end', \&on_whois_end);
