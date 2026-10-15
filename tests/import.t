@@ -54,6 +54,25 @@ subtest 'parse_nick_change' => sub {
     is(Profiler::Import::parse_nick_change('08:57:35-!- bob [~bob@192.0.2.26] has joined #chan'), undef, 'a join is not');
 };
 
+subtest 'parse_kick' => sub {
+    is_deeply(Profiler::Import::parse_kick('17:25:00-!- oscar was kicked from #chan by trent [[pv!k] Banned]'),
+        { hour => 17, min => 25, sec => 0, nick => 'oscar', channel => '#chan', by => 'trent', reason => '[pv!k] Banned' },
+        'reason can hold brackets');
+    is(Profiler::Import::parse_kick('17:25 -!- x was kicked from #chan by trent []')->{reason}, '', 'older format, no reason');
+    is(Profiler::Import::parse_kick('17:25 <trent> 17:25:00-!- x was kicked from #chan by trent [no]'), undef, 'quoted in chat');
+};
+
+subtest 'parse_bans' => sub {
+    is_deeply(Profiler::Import::parse_bans('09:39:46-!- mode/#chan [+b *!*@198.51.100.*] by mallory'),
+        { hour => 9, min => 39, sec => 46, channel => '#chan', by => 'mallory', masks => ['*!*@198.51.100.*'] }, 'a ban');
+    is_deeply(Profiler::Import::parse_bans('12:05:00-!- mode/#chan [+o-b+b trent *!*@1.2.3.4 *!lol@*] by trent')->{masks},
+        ['*!lol@*'], 'only what was added, with each mode taking its own argument');
+    is_deeply(Profiler::Import::parse_bans('12:05 -!- mode/#chan [+l-l+bk 10 *!*@x key] by trent')->{masks},
+        ['*!*@x'], 'a limit takes an argument only when set');
+    is(Profiler::Import::parse_bans('12:05:00-!- mode/#chan [-b *!*@x] by trent'), undef, 'a lifted ban is ignored');
+    is(Profiler::Import::parse_bans('12:05:00-!- mode/#chan [+v bob] by trent'), undef, 'so is anything else');
+};
+
 subtest 'replaying a log directory' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);
@@ -89,6 +108,29 @@ subtest 'replaying a log directory' => sub {
     ok($troll->{quarantined}, 'quarantined');
 
     is(scalar @{ Profiler::Store->new($dir)->profile('efnet', 'bob')->{sightings} }, 5, 'everything committed');
+
+    is($stats->{kicks}, 2, 'kicks');
+    is($stats->{bans}, 2, 'bans');
+    my @marks = $store->marks('efnet', 'bob');
+    is_deeply([ map { "$_->{kind} $_->{ident}\@$_->{host}" } @marks ],
+        ['ban lol@198.51.100.66', 'kick lol@198.51.100.66'], 'the impostor on bob is marked as who they were');
+    my ($oscar) = $store->marks('efnet', 'oscar');
+    is($oscar->{reason}, '[pv!k] Banned', 'a kick of someone never seen joining');
+    ok(!defined $oscar->{host}, 'with no address');
+};
+
+subtest 'backfilling only kicks and bans' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    my $stats = Profiler::Import::replay(store => $store, network => 'efnet', logs => $LOGS, recheck => 600, marks_only => 1);
+    is($stats->{joins}, 0, 'no joins recorded');
+    is($stats->{kicks}, 2, 'but the kicks');
+    is(scalar(() = $store->marks('efnet', 'bob')), 2, 'matched to who joined, as before');
+    is($store->profile('efnet', 'bob'), undef, 'with no sightings');
+    is_deeply([ $store->linked('efnet', 'bob') ], [], 'or nick links');
+
+    Profiler::Import::replay(store => $store, network => 'efnet', logs => $LOGS, recheck => 600, marks_only => 1);
+    is(scalar(() = $store->marks('efnet', 'bob')), 2, 'running it twice adds nothing');
 };
 
 subtest 'host names are not resolved' => sub {

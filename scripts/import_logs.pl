@@ -92,6 +92,7 @@ printf "replayed %d joins in %ds (%d quick rejoins skipped)\n", $stats->{joins},
 printf "verdicts: %s\n", join(', ', map { "$_ " . ($v->{$_} // 0) } ('unknown', 'consistent', 'mixed', 'new host', 'suspect'));
 printf "%d quarantined sighting(s) later promoted as moves\n", $stats->{promoted};
 printf "%d nick change line(s) linked\n", $stats->{nick_changes};
+printf "%d kick(s) and %d ban mask(s) recorded\n", $stats->{kicks}, $stats->{bans};
 if ($stats->{unparsed}) {
     print "$stats->{unparsed} join line(s) could not be parsed, for example:\n";
     print "  $_\n" for @{ $stats->{unparsed_examples} };

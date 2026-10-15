@@ -37,6 +37,11 @@ been running all along.
 plain `cp` over an open database leaves irssi's write-ahead log beside the new
 file, and SQLite replays it into the new file, which corrupts it. The old
 database is kept as `efnet.sqlite.old`.
+The import also records kicks and bans (see below). For a file imported
+before that, `scripts/backfill_marks.pl --logs ~/irclogs/EFNet
+~/.irssi/scripts/profiler-data/efnet.sqlite` adds just those, and can run
+while irssi has the file open.
+
 `--network` must be the irssi server tag. Logs only hold nick, ident, host,
 channel and time, so imported sightings have no realname, server or version,
 and no host lookups are done. On a synthetic year of 182k joins it takes
