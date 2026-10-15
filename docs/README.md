@@ -252,7 +252,7 @@ nick.
   fades on `profiler_half_life_days`. A record counts from 0.25: any ban,
   or a kick within the last half-life.
 - **On the nick's own line.** A nick whose record counts always gets its
-  line, ending with something like `kicked 2x, banned 1x, last 2026-09-02
+  line, ending with something like `banned 1x, kicked 2x, last 2026-09-02
   by alice (shamed)`. `/profiler show <nick>` lists the record and who
   each one hit.
 - **EVADER.** Every join is compared with the people whose record counts,
