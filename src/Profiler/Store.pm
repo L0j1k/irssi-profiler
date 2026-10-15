@@ -246,6 +246,15 @@ sub review {
     return $changed + 0;
 }
 
+# Marks one sighting reviewed by hand, held ($quarantined 1) or counted (0).
+sub set_reviewed {
+    my ($self, $network, $sighting, $quarantined) = @_;
+    $self->db($network)->prepare_cached('UPDATE sightings SET quarantined = ?, reviewed = 1 WHERE id = ?')
+        ->execute($quarantined, $sighting->{id});
+    $sighting->{quarantined} = $quarantined;
+    $sighting->{reviewed} = 1;
+}
+
 # If the nick's quarantined sightings look like they moved rather than like
 # an impostor (see Profiler::Score::promotable), let them count. They are
 # marked promoted, so a later look at the data can tell them apart from

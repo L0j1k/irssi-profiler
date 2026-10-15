@@ -157,15 +157,23 @@ sub replay {
                 nick => $j->{nick}, ident => $j->{ident}, host => $j->{host},
                 ip => literal_ip($j->{host}), channel => $j->{channel},
             };
-            my $r = Profiler::Score::judge($store->profile($network, $j->{nick}), $obs, $j->{time});
-            $store->record($network, $obs, $j->{time}, $r->{verdict});
+            my $sighting = observe($store, $network, $obs, $j->{time});
             $stats{joins}++;
-            $stats{verdicts}{ $r->{verdict} }++;
+            $stats{verdicts}{ $sighting->{verdict} }++;
             $stats{promoted} += $store->promote_if_moved($network, $j->{nick}, $j->{time}, $promote_count, $promote_days);
         }
     }
     $store->flush;
     return \%stats;
+}
+
+# Judges one observation against the nick's history as of $time and records
+# it. Returns the recorded sighting. Callers promote afterwards
+# (Store::promote_if_moved), once they've done anything else to it.
+sub observe {
+    my ($store, $network, $obs, $time) = @_;
+    my $r = Profiler::Score::judge($store->profile($network, $obs->{nick}), $obs, $time);
+    return $store->record($network, $obs, $time, $r->{verdict})->{sightings}[-1];
 }
 
 1;
