@@ -239,7 +239,9 @@ example:
     "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n {channick $0}"; };
 
 The formats are `profiler_line` for status messages and `profiler_<word>`
-(lowercase, `_` for the space) for the rest.
+(lowercase, `_` for the space) for the rest. A variant's word is
+`variant_consistent` or `variant_mixed`, and a line with two words uses
+both, as in `profiler_unknown_variant_consistent`.
 
 ## Limits
 
