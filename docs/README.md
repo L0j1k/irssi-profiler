@@ -215,7 +215,8 @@ someone starts with a one-word summary in its own colour:
 
 | word      | colour        | means |
 |-----------|---------------|-------|
-| WARNING   | bright red    | under the channel's min_trust, or on a likely proxy |
+| WARNING   | bright red    | under the channel's min_trust with something against them, or on a likely proxy |
+| UNPROVEN  | bright purple | under the channel's min_trust, but everything matches: just not much history yet |
 | SUSPECT   | bright yellow | doesn't match the nick's history |
 | MIXED     | bright cyan   | partly matches |
 | CONFIDENT | bright green  | consistent with the nick's history |

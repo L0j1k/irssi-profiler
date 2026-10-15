@@ -58,8 +58,12 @@ sub verdict_line {
         my $often = $r->{host_changes_often} ? ' (frequently changes hosts)' : '';
         return ($word // 'NEW HOST', "$job->{nick} (${was}$job->{ident}\@$job->{host})$proxy: $matches$often; $seen");
     }
+    # Under the minimum with nothing against them is someone we just haven't
+    # seen much of, like a newcomer. Anything that disagrees could be a
+    # troll on the nick, which is what WARNING is for.
     if (Profiler::Rules::below_minimum($r, $min)) {
-        return ('WARNING', "$who has $score, under $min; $seen$why");
+        my $against = grep { $_ < 0 } values %{ $r->{parts} };
+        return ($against ? 'WARNING' : $word // 'UNPROVEN', "$who has $score, under $min; $seen$why");
     }
     # A nick change is always reported, since irssi's own line doesn't say
     # whether the new nick fits.

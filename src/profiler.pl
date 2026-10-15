@@ -70,6 +70,7 @@ my %recent;
 # read at a glance.
 my %WORD_COLOUR = (
     WARNING     => '%R',
+    UNPROVEN    => '%M',
     SUSPECT     => '%Y',
     MIXED       => '%C',
     CONFIDENT   => '%G',

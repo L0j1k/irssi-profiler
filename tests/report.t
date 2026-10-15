@@ -25,6 +25,17 @@ subtest 'a consistent join says nothing unless asked' => sub {
     like($text, qr/^bob \(~bob\@host\.example\.net, client: irssi v1\.4\.5\) has trust \+0\.90/, $text);
 };
 
+subtest 'under the minimum, thin history is unproven and anything against them is a warning' => sub {
+    my ($word, $text) = @{ line({ %consistent, trust => 0.33, confidence => 0.57 }) };
+    is($word, 'UNPROVEN', 'everything matches, there just is not much of it');
+    like($text, qr/has trust \+0\.33 .* under 0\.5/, $text);
+
+    ($word, $text) = @{ line({ %consistent, verdict => 'mixed', trust => 0.1, match => 0.15,
+        parts => { host => -0.8, ident => 0.9, channel => -1 } }) };
+    is($word, 'WARNING', 'something counts against them');
+    like($text, qr/\[channel=-1\.00 host=-0\.80 ident=\+0\.90\]/, 'and the parts say what');
+};
+
 subtest 'a likely proxy is one warning line, whatever the verdict' => sub {
     my $proxy = qr/on a likely VPN, proxy or hosting address \(192\.0\.2\.95, Linode, matched 'linode'\)/;
 

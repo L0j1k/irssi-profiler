@@ -74,6 +74,7 @@ check_word() {
 bright() { echo $'(\e\\[1m\e\\[3'"$1"$'m|\e\\[9'"$1"$'m)'; }
 grey=$'\e\\[(22;)?37m'
 check_word WARNING "$(bright 1)"
+check_word UNPROVEN "$(bright 5)"
 check_word SUSPECT "$(bright 3)"
 check_word MIXED "$(bright 6)"
 check_word CONFIDENT "$(bright 2)"
