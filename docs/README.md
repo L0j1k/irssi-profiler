@@ -86,7 +86,10 @@ Each attribute of a join scores from -1 to +1 against that history:
   (`cpe-198-51-100-202.san.res.rr.com` vs `cpe-203-0-113-17.san.res.rr.com`).
   So does any other generated name from the same ISP
   (`56.sub-198-51-100.myvzw.com` vs `226.sub-203-0-113.myvzw.com`), since
-  mobile and residential ISPs hand out addresses from all over. So does a reply from the same client at another version (`irssi
+  mobile and residential ISPs hand out addresses from all over. Bare
+  addresses (IPv4 or IPv6 with no name) are compared by who whois says
+  they belong to, the organisation or else the AS, which live sightings
+  keep as their provider. So does a reply from the same client at another version (`irssi
   v1.4.5` vs `v1.4.6`).
 - **Contradicts:** `-stability`. Stability is
   how dominant the usual value has been. Breaking an ident used every time
@@ -162,7 +165,11 @@ trust under 0.5 anyway. The verdict is:
   is the registered domain, like `myvzw.com` or `telia.it`). People stick
   with their home and mobile ISPs, so a new one is what a residential proxy
   network looks like. The warning says `from an ISP they've never used,
-  telia.it, usually myvzw.com`. Someone who really changed ISP is held as
+  telia.it, usually myvzw.com`. Bare addresses work the same way with
+  their provider, once the nick has live sightings with providers. A
+  domain is only compared with a domain and a provider with a provider,
+  and a join from a likely proxy is left out, since a VPN is nobody's home
+  ISP. Someone who really changed ISP is held as
   suspect until the move is promoted, about a week of joins. A nick that
   has only used its own server or bare addresses has no usual ISP to
   leave, so this doesn't apply.

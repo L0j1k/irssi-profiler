@@ -135,6 +135,35 @@ subtest 'another address from the same ISP is a partial match, a new ISP is susp
         'someone who has only used their own server has no usual ISP to leave');
 };
 
+subtest 'bare addresses are compared by who they belong to' => sub {
+    # atsu1 comes from all over one provider's IPv6 space.
+    my %atsu = (ident => '~atsu1', channel => '#chan');
+    my @addrs = map { sprintf '2a02:21b4:9a%02x:c020::%x', $_, $_ } 1 .. 10;
+    my $history = { sightings => [ map {
+        { %atsu, host => $addrs[$_], ip => $addrs[$_], provider => 'example telecom', time => $NOW - $_ * $DAY }
+    } 0 .. $#addrs ] };
+
+    my $r = judge($history, { %atsu, host => '2a02:21b4:9bff:1::1', ip => '2a02:21b4:9bff:1::1', provider => 'example telecom' });
+    ok($r->{parts}{host} > 0, "another address from the same provider counts for them ($r->{parts}{host})");
+    ok(!$r->{new_isp}, 'not a new provider');
+
+    $r = judge($history, { %atsu, host => '198.51.100.9', ip => '198.51.100.9', provider => 'other net' });
+    is($r->{verdict}, 'suspect', 'a provider they have never used is suspect');
+    is_deeply($r->{new_isp}, { isp => 'other net', usual => 'example telecom' }, 'and says which');
+
+    ok(!judge($history, { %atsu, host => '198.51.100.9', ip => '198.51.100.9', provider => 'other net', proxy => 'vpn' })
+        ->{new_isp}, 'not from a VPN, which is no residential ISP');
+
+    my %bouncer = (%atsu, host => 'box.example.org', provider => 'hosting co');
+    my $own = { sightings => [ map { { %bouncer, time => $NOW - $_ * $DAY } } 1 .. 10 ] };
+    ok(!judge($own, { %atsu, host => '198.51.100.9', ip => '198.51.100.9', provider => 'other net' })->{new_isp},
+        "their own server's hosting company is not their usual provider");
+
+    my $imported = { sightings => [ map { { %atsu, host => $addrs[$_], ip => $addrs[$_], time => $NOW - $_ * $DAY } } 0 .. 9 ] };
+    ok(!judge($imported, { %atsu, host => '198.51.100.9', ip => '198.51.100.9', provider => 'other net' })->{new_isp},
+        'history without providers can say nothing about them');
+};
+
 subtest 'a jupe troll on an established nick is suspect' => sub {
     my $r = judge(profile_of(20), \%troll);
     is($r->{verdict}, 'suspect', 'verdict');

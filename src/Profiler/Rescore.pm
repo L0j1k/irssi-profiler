@@ -9,6 +9,7 @@ use DBD::SQLite;
 
 use Profiler::Import;
 use Profiler::Store;
+use Profiler::Whois;
 
 # Builds a new data file from an old one by judging every stored sighting
 # again, oldest first, with the current scoring. That's what to run after a
@@ -40,7 +41,7 @@ sub rescore {
 
     my $old = DBI->connect("dbi:SQLite:dbname=$arg{from}", '', '',
         { RaiseError => 1, PrintError => 0, sqlite_open_flags => DBD::SQLite::OPEN_READONLY() });
-    # Schema 2 is the same without kicks and bans.
+    # Schema 2 is the same without kicks and bans, and 3 without providers.
     my ($version) = $old->selectrow_array('PRAGMA user_version');
     die "$arg{from} is schema $version, and this reads 2 to $Profiler::Store::SCHEMA_VERSION\n"
         if $version < 2 || $version > $Profiler::Store::SCHEMA_VERSION;
@@ -48,8 +49,13 @@ sub rescore {
     my $new = $store->db($network, 1);
     my $links = $old->selectall_arrayref('SELECT a, b, first_seen, last_seen FROM nick_links');
     $new->prepare('INSERT INTO nick_links (a, b, first_seen, last_seen) VALUES (?, ?, ?, ?)')->execute(@$_) for @$links;
+    # Sightings from before providers were kept get theirs from the cached
+    # lookup of their host, where there is one.
+    my %provider;
     for my $info (@{ $old->selectall_arrayref('SELECT * FROM hostinfo', { Slice => {} }) }) {
-        $store->set_hostinfo($network, delete $info->{host}, $info, $info->{checked});
+        my $host = delete $info->{host};
+        $store->set_hostinfo($network, $host, $info, $info->{checked});
+        $provider{$host} = Profiler::Whois::provider($info);
     }
     if ($version >= 3) {
         my @columns = qw(kind nick_key nick ident host channel mask by reason time);
@@ -63,7 +69,8 @@ sub rescore {
     $rows->execute;
     while (my $row = $rows->fetchrow_hashref) {
         my %obs = (nick => $row->{nick},
-            map { defined $row->{$_} ? ($_ => $row->{$_}) : () } qw(host ip ident realname server version channel proxy));
+            map { defined $row->{$_} ? ($_ => $row->{$_}) : () } qw(host ip ident realname server version channel proxy provider));
+        $obs{provider} //= $provider{ $obs{host} } if defined $obs{host};
         my $s = Profiler::Import::observe($store, $network, \%obs, $row->{time});
         # Reviewed without a promotion means someone ran /profiler accept or
         # reject on it.

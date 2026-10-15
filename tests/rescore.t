@@ -51,6 +51,7 @@ subtest 'every sighting is judged again with the current scoring' => sub {
     is($bob->{sightings}[-1]{realname}, 'Bob Smith', 'what live lookups gave is kept');
     is_deeply([ $store->linked('efnet', 'bob') ], ['bob_'], 'nick links are kept');
     is($store->fresh_hostinfo('efnet', 'host.example.net', $T, 3600)->{org}, 'Example ISP', 'and host lookups');
+    is($bob->{sightings}[0]{provider}, 'example isp', 'which fill in who the address belongs to');
 };
 
 subtest 'what was decided by hand stays decided' => sub {

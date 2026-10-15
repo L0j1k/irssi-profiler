@@ -362,7 +362,7 @@ sub look_up_host {
 
 sub judge {
     my ($job, $hostinfo) = @_;
-    my $obs = { %$job, ip => $hostinfo->{ip}, proxy => $hostinfo->{proxy} };
+    my $obs = { %$job, ip => $hostinfo->{ip}, proxy => $hostinfo->{proxy}, provider => Profiler::Whois::provider($hostinfo) };
     my $now = time;
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
 

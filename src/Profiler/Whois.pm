@@ -45,6 +45,20 @@ sub parse {
     return \%rec;
 }
 
+# Who an address belongs to, for telling a provider's other addresses from a
+# change of provider: the registry's organisation, or its AS when there's
+# none, lowercased with spacing evened out. undef when the record has
+# neither. The netname isn't used, since one provider has many.
+sub provider {
+    my ($rec) = @_;
+    my $name = $rec->{org} // $rec->{origin};
+    return undef unless defined $name && $name =~ /\S/;
+    $name = lc $name;
+    $name =~ s/\s+/ /g;
+    $name =~ s/^ | $//g;
+    return $name;
+}
+
 # The first keyword found as a whole word or phrase in the record, or undef.
 sub proxy_reason {
     my ($rec, $keywords) = @_;

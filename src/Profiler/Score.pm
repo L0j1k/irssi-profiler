@@ -149,8 +149,7 @@ sub similarity {
             return $SUBNET_CREDIT if same_subnet($seen->{ip}, $obs->{ip});
         }
         return $SUBNET_CREDIT if same_pool($seen->{host}, $obs->{host});
-        my $isp = Profiler::Host::isp_domain($obs->{host});
-        return defined $isp && $isp eq (Profiler::Host::isp_domain($seen->{host}) // '') ? $SAME_ISP_CREDIT : 0;
+        return same_isp($seen, $obs) ? $SAME_ISP_CREDIT : 0;
     }
     return 1 if $seen->{$attr} eq $obs->{$attr};
     # Channel names aren't case sensitive. The store keeps them lowercased,
@@ -295,21 +294,50 @@ sub judge {
     return \%r;
 }
 
-# { isp, usual } when the observation comes from an ISP-generated name whose
-# ISP isn't in a history that has some, usual being the one they've used
-# most. undef otherwise, including for someone who has only used their own
-# server or bare addresses, since there's no usual ISP to leave.
+# Which ISP a sighting came through, two ways: the domain of an ISP-generated
+# name, and the provider whois gave for the address (live sightings only).
+# Only ISP names and bare addresses have them. A custom name is somebody's
+# own server, and its hosting company says nothing about their home ISP.
+sub isp_keys {
+    my ($s) = @_;
+    my $kind = defined $s->{host} ? Profiler::Host::kind($s->{host}) : '';
+    return () unless $kind eq 'isp' || $kind eq 'ip';
+    my %keys;
+    $keys{domain} = Profiler::Host::isp_domain($s->{host}) if $kind eq 'isp';
+    $keys{provider} = $s->{provider} if defined $s->{provider};
+    return %keys;
+}
+
+# Do two sightings share an ISP, by domain or by provider? A domain is only
+# compared with a domain and a provider with a provider, since myvzw.com and
+# "cellco partnership" are the same ISP under different names.
+sub same_isp {
+    my ($a, $b) = @_;
+    my %a = isp_keys($a) or return 0;
+    my %b = isp_keys($b) or return 0;
+    return any { defined $a{$_} && defined $b{$_} && $a{$_} eq $b{$_} } keys %b;
+}
+
+# { isp, usual } when the observation comes through an ISP that a history
+# with ISPs of the same kind (domain or provider) has never used, usual being
+# the one they've used most. undef otherwise, including for someone who has
+# only used their own server, history without providers for a bare address,
+# and a join from a likely proxy, which is nobody's home ISP.
 sub new_isp {
     my ($weighted, $obs) = @_;
-    my $isp = Profiler::Host::isp_domain($obs->{host}) // return undef;
+    return undef if $obs->{proxy};
+    my %isp = isp_keys($obs) or return undef;
     my %used;
     for my $pair (@$weighted) {
-        my $seen_isp = Profiler::Host::isp_domain($pair->[0]{host}) // next;
-        $used{$seen_isp} += $pair->[1];
+        my %seen = isp_keys($pair->[0]);
+        $used{$_}{ $seen{$_} } += $pair->[1] for keys %seen;
     }
-    return undef if !%used || $used{$isp};
-    my ($usual) = sort { $used{$b} <=> $used{$a} || $a cmp $b } keys %used;
-    return { isp => $isp, usual => $usual };
+    # Domains first, since every ISP name has one.
+    my @compared = grep { $used{$_} } sort keys %isp;
+    return undef if !@compared || any { $used{$_}{ $isp{$_} } } @compared;
+    my $kind = $compared[0];
+    my ($usual) = sort { $used{$kind}{$b} <=> $used{$kind}{$a} || $a cmp $b } keys %{ $used{$kind} };
+    return { isp => $isp{$kind}, usual => $usual };
 }
 
 # Does this person turn up from new hosts a lot? We look at every sighting
