@@ -203,6 +203,51 @@ subtest 'a database from an older profiler is refused' => sub {
     like($@, qr/older version of the profiler.*import/s, 'says to re-import');
 };
 
+subtest 'a database from the last schema is upgraded where it is' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->record('efnet', \%obs, 1000, 'unknown');
+    $store->close;
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
+    $dbh->do('DROP TABLE marks');
+    $dbh->do('PRAGMA user_version = 2');
+    $dbh->disconnect;
+
+    $store = reopened($dir);
+    is($store->profile('efnet', 'bob')->{total}, 1, 'sightings are still there');
+    $store->record_kick('efnet', { nick => 'bob', channel => '#chan', by => 'op', reason => 'bye' }, 2000);
+    $store->close;
+    $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
+    is($dbh->selectrow_array('PRAGMA user_version'), $Profiler::Store::SCHEMA_VERSION, 'marked as upgraded');
+    is($dbh->selectrow_array('SELECT count(*) FROM marks'), 1, 'and the new table works');
+};
+
+subtest 'kicks and bans' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    my $day = 86400;
+    $store->record_kick('efnet', { nick => 'Troll', channel => '#CHAN', by => 'op', reason => 'shamed' }, 11 * $day);
+    $store->record_kick('efnet', { nick => 'Troll', channel => '#CHAN', by => 'op', reason => 'shamed' }, 11 * $day);
+    my $ban = { channel => '#chan', mask => '*!~lol@*.example.org', by => 'op' };
+    $store->record_ban('efnet', $ban, 12 * $day, 'Troll', 'troll2');
+    $store->record_ban('efnet', $ban, 12 * $day, 'Troll', 'troll2');
+    $store->record_ban('efnet', { %$ban, mask => '*!*@*' }, 12 * $day);
+
+    my @marks = $store->marks('efnet', 'troll');
+    is(scalar @marks, 2, 'the same kick or ban seen twice counts once');
+    is_deeply([ map { $_->{kind} } @marks ], [qw(kick ban)], 'oldest first');
+    is($marks[0]{reason}, 'shamed', 'kicks keep the reason');
+    is($marks[0]{channel}, '#chan', 'and the channel, lowercased');
+    is($marks[0]{by}, 'op', 'and who did it');
+    is($marks[1]{mask}, '*!~lol@*.example.org', 'bans keep the mask');
+    is(scalar(() = $store->marks('efnet', 'troll2')), 1, 'a ban marks everyone it was matched to');
+    is_deeply([ $store->marks('efnet', 'bob') ], [], 'bob is clean');
+    is_deeply([ $store->marked('efnet') ], [qw(troll troll2)], 'who has been kicked or banned');
+
+    $store->flush;
+    is(scalar(() = reopened($dir)->marks('efnet', 'troll')), 2, 'stored');
+};
+
 subtest 'odd network names make safe file names' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);

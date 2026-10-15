@@ -4,6 +4,8 @@ use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../src";
 
+use DBI;
+use File::Basename ();
 use File::Temp qw(tempdir);
 use Test::More;
 
@@ -59,6 +61,25 @@ subtest 'what was decided by hand stays decided' => sub {
     ok(!$carol->{quarantined} && $carol->{reviewed}, 'an accepted sighting still counts');
     my $dave = $store->profile('efnet', 'dave')->{sightings};
     ok($dave->[-1]{quarantined} && $dave->[-1]{reviewed}, 'a rejected one is still held');
+};
+
+subtest 'kicks and bans are kept, and a file from before them is read too' => sub {
+    my $from = old_store();
+    my $store = Profiler::Store->new(File::Basename::dirname($from));
+    $store->record_kick('efnet', { nick => 'dave', channel => '#chan', by => 'op', reason => 'troll' }, $T);
+    $store->close;
+    my $out = tempdir(CLEANUP => 1);
+    Profiler::Rescore::rescore(from => $from, out => $out, network => 'efnet');
+    is(scalar(() = Profiler::Store->new($out)->marks('efnet', 'dave')), 1, 'kicks and bans are copied');
+
+    $from = old_store();
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$from", '', '', { RaiseError => 1 });
+    $dbh->do('DROP TABLE marks');
+    $dbh->do('PRAGMA user_version = 2');
+    $dbh->disconnect;
+    $out = tempdir(CLEANUP => 1);
+    my $stats = Profiler::Rescore::rescore(from => $from, out => $out, network => 'efnet');
+    is($stats->{sightings}, 23, 'a schema 2 file is rescored');
 };
 
 subtest 'it never overwrites' => sub {

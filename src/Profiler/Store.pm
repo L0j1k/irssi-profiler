@@ -33,6 +33,25 @@ my @HOSTINFO_FIELDS = qw(ip netname org origin proxy error);
 # ones stay in the database.
 our $HISTORY_SIZE = 200;
 
+# Kicks and bans, one row per nick they were matched to. A ban that matched
+# nobody we could name keeps its mask with no nick. Seeing the same one
+# again (a log read twice, a ban list synced on every join) is ignored.
+my @MARKS_SCHEMA = (
+    'CREATE TABLE IF NOT EXISTS marks (
+        id       INTEGER PRIMARY KEY,
+        kind     TEXT NOT NULL,
+        nick_key TEXT,
+        nick     TEXT,
+        channel  TEXT NOT NULL,
+        mask     TEXT,
+        by       TEXT,
+        reason   TEXT,
+        time     INTEGER NOT NULL
+    )',
+    'CREATE INDEX IF NOT EXISTS marks_by_nick ON marks (nick_key)',
+    "CREATE UNIQUE INDEX IF NOT EXISTS marks_once ON marks (kind, channel, time, ifnull(nick_key, ''), ifnull(mask, ''))",
+);
+
 my @SCHEMA = (
     'CREATE TABLE IF NOT EXISTS sightings (
         id          INTEGER PRIMARY KEY,
@@ -71,12 +90,14 @@ my @SCHEMA = (
         PRIMARY KEY (a, b)
     )',
     'CREATE INDEX IF NOT EXISTS nick_links_by_b ON nick_links (b)',
+    @MARKS_SCHEMA,
 );
 
 # Stored in the database as PRAGMA user_version. Bump it whenever the schema
-# changes. There's no upgrading: a database from an older version is refused
-# and gets re-imported.
-our $SCHEMA_VERSION = 2;
+# changes, and add the steps from the old version to %UPGRADE if the old
+# data still fits. A version with no steps is refused and gets re-imported.
+our $SCHEMA_VERSION = 3;
+my %UPGRADE = (2 => \@MARKS_SCHEMA);
 
 sub new {
     my ($class, $dir) = @_;
@@ -119,6 +140,12 @@ sub db {
         if (!$tables) {
             $dbh->do('PRAGMA journal_mode = WAL');
             $dbh->do($_) for @SCHEMA;
+            $dbh->do("PRAGMA user_version = $SCHEMA_VERSION");
+        }
+        elsif ($version != $SCHEMA_VERSION && $UPGRADE{$version}) {
+            # Each statement commits on its own here, and the version goes
+            # last, so an upgrade cut short just runs again next time.
+            $dbh->do($_) for @{ $UPGRADE{$version} };
             $dbh->do("PRAGMA user_version = $SCHEMA_VERSION");
         }
         elsif ($version != $SCHEMA_VERSION) {
@@ -284,6 +311,42 @@ sub link_nicks {
     return if $first eq $second;
     $self->db($network, 1)->prepare_cached('INSERT INTO nick_links (a, b, first_seen, last_seen) VALUES (?, ?, ?, ?)
         ON CONFLICT (a, b) DO UPDATE SET last_seen = excluded.last_seen')->execute($first, $second, $now, $now);
+}
+
+# Someone was kicked. $kick is { nick, channel, by, reason }.
+sub record_kick {
+    my ($self, $network, $kick, $time) = @_;
+    $self->insert_mark($network, 'kick', $kick->{nick}, { %$kick, mask => undef }, $time);
+}
+
+# A ban was set. $ban is { channel, mask, by }, and @nicks are who it was
+# matched to (see Profiler::Marks::banned_nicks), if anyone.
+sub record_ban {
+    my ($self, $network, $ban, $time, @nicks) = @_;
+    $self->insert_mark($network, 'ban', $_, { %$ban, reason => undef }, $time) for @nicks ? @nicks : (undef);
+}
+
+sub insert_mark {
+    my ($self, $network, $kind, $nick, $mark, $time) = @_;
+    $self->db($network, 1)->prepare_cached('INSERT OR IGNORE INTO marks (kind, nick_key, nick, channel, mask, by, reason, time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)')->execute($kind, defined $nick ? lc $nick : undef, $nick,
+        lc $mark->{channel}, @$mark{qw(mask by reason)}, $time);
+}
+
+# A nick's kicks and bans, oldest first, each as { kind, channel, mask, by,
+# reason, time }.
+sub marks {
+    my ($self, $network, $nick) = @_;
+    my $dbh = $self->db($network) or return ();
+    return @{ $dbh->selectall_arrayref('SELECT kind, channel, mask, by, reason, time FROM marks
+        WHERE nick_key = ? ORDER BY time, id', { Slice => {} }, lc $nick) };
+}
+
+# Every nick that has been kicked or banned, sorted.
+sub marked {
+    my ($self, $network) = @_;
+    my $dbh = $self->db($network) or return ();
+    return @{ $dbh->selectcol_arrayref('SELECT DISTINCT nick_key FROM marks WHERE nick_key IS NOT NULL ORDER BY 1') };
 }
 
 # The nicks this one has been linked to directly, most recently used first.
