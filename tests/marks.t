@@ -28,10 +28,10 @@ subtest 'who a ban was for' => sub {
         { nick => 'bob', ident => '~bob', host => 'cpe-1-2-3-4.example.net' },
         { nick => 'troll', ident => '~lol', host => 'b.example.org' },
     );
-    is_deeply([ Profiler::Marks::banned_nicks('*!~lol@*', \@here) ], ['troll'], 'each nick once');
-    is_deeply([ Profiler::Marks::banned_nicks('*!*@*.nowhere', \@here) ], [], 'nobody');
+    is_deeply([ Profiler::Marks::banned('*!~lol@*', \@here) ], [ $here[0] ], 'each nick once, as first matched');
+    is_deeply([ Profiler::Marks::banned('*!*@*.nowhere', \@here) ], [], 'nobody');
     my @crowd = map { { nick => "n$_", ident => '~x', host => "h$_.example.net" } } 1 .. 4;
-    is_deeply([ Profiler::Marks::banned_nicks('*!*@*.example.net', \@crowd) ], [], 'too many to say who it was for');
+    is_deeply([ Profiler::Marks::banned('*!*@*.example.net', \@crowd) ], [], 'too many to say who it was for');
 };
 
 subtest 'how much a record of kicks and bans counts' => sub {

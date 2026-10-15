@@ -34,16 +34,17 @@ sub mask_matches {
     return lc("$nick!$ident\@$host") =~ /^$re$/ ? 1 : 0;
 }
 
-# The nicks a ban was for, from @$candidates ({ nick, ident, host }), each
-# once in the order first seen. Empty when nobody matched or too many did.
-sub banned_nicks {
+# Who a ban was for, from @$candidates ({ nick, ident, host }): one for each
+# nick that matched, as it first matched. Empty when nobody matched or too
+# many did.
+sub banned {
     my ($mask, $candidates) = @_;
-    my (%seen, @nicks);
+    my (%seen, @who);
     for my $c (@$candidates) {
         next unless mask_matches($mask, @$c{qw(nick ident host)});
-        push @nicks, $c->{nick} unless $seen{ lc $c->{nick} }++;
+        push @who, $c unless $seen{ lc $c->{nick} }++;
     }
-    return @nicks > $BAN_MAX_NICKS ? () : @nicks;
+    return @who > $BAN_MAX_NICKS ? () : @who;
 }
 
 sub weight {

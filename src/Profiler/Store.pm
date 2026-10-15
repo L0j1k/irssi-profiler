@@ -33,8 +33,10 @@ my @HOSTINFO_FIELDS = qw(ip netname org origin proxy error);
 # ones stay in the database.
 our $HISTORY_SIZE = 200;
 
-# Kicks and bans, one row per nick they were matched to. A ban that matched
-# nobody we could name keeps its mask with no nick. Seeing the same one
+# Kicks and bans, one row per nick they were matched to, with the ident and
+# host that had the nick then, since an impostor wearing bob's nick can get
+# kicked too. A ban that matched nobody we could name keeps its mask with no
+# nick. Seeing the same one
 # again (a log read twice, a ban list synced on every join) is ignored.
 my @MARKS_SCHEMA = (
     'CREATE TABLE IF NOT EXISTS marks (
@@ -42,6 +44,8 @@ my @MARKS_SCHEMA = (
         kind     TEXT NOT NULL,
         nick_key TEXT,
         nick     TEXT,
+        ident    TEXT,
+        host     TEXT,
         channel  TEXT NOT NULL,
         mask     TEXT,
         by       TEXT,
@@ -313,32 +317,36 @@ sub link_nicks {
         ON CONFLICT (a, b) DO UPDATE SET last_seen = excluded.last_seen')->execute($first, $second, $now, $now);
 }
 
-# Someone was kicked. $kick is { nick, channel, by, reason }.
+# Someone was kicked. $kick is { nick, ident, host, channel, by, reason },
+# with ident and host undef if we don't know who had the nick.
 sub record_kick {
     my ($self, $network, $kick, $time) = @_;
-    $self->insert_mark($network, 'kick', $kick->{nick}, { %$kick, mask => undef }, $time);
+    $self->insert_mark($network, 'kick', { %$kick, mask => undef }, $time);
 }
 
-# A ban was set. $ban is { channel, mask, by }, and @nicks are who it was
-# matched to (see Profiler::Marks::banned_nicks), if anyone.
+# A ban was set. $ban is { channel, mask, by }, and @who are the
+# { nick, ident, host } it was matched to (see Profiler::Marks::banned), if
+# anyone.
 sub record_ban {
-    my ($self, $network, $ban, $time, @nicks) = @_;
-    $self->insert_mark($network, 'ban', $_, { %$ban, reason => undef }, $time) for @nicks ? @nicks : (undef);
+    my ($self, $network, $ban, $time, @who) = @_;
+    $self->insert_mark($network, 'ban', { %$ban, %$_, reason => undef }, $time) for @who ? @who : ({});
 }
 
 sub insert_mark {
-    my ($self, $network, $kind, $nick, $mark, $time) = @_;
-    $self->db($network, 1)->prepare_cached('INSERT OR IGNORE INTO marks (kind, nick_key, nick, channel, mask, by, reason, time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)')->execute($kind, defined $nick ? lc $nick : undef, $nick,
+    my ($self, $network, $kind, $mark, $time) = @_;
+    my $nick = $mark->{nick};
+    $self->db($network, 1)->prepare_cached('INSERT OR IGNORE INTO marks
+        (kind, nick_key, nick, ident, host, channel, mask, by, reason, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute($kind, defined $nick ? lc $nick : undef, $nick, @$mark{qw(ident host)},
         lc $mark->{channel}, @$mark{qw(mask by reason)}, $time);
 }
 
-# A nick's kicks and bans, oldest first, each as { kind, channel, mask, by,
-# reason, time }.
+# A nick's kicks and bans, oldest first, each as { kind, ident, host,
+# channel, mask, by, reason, time }.
 sub marks {
     my ($self, $network, $nick) = @_;
     my $dbh = $self->db($network) or return ();
-    return @{ $dbh->selectall_arrayref('SELECT kind, channel, mask, by, reason, time FROM marks
+    return @{ $dbh->selectall_arrayref('SELECT kind, ident, host, channel, mask, by, reason, time FROM marks
         WHERE nick_key = ? ORDER BY time, id', { Slice => {} }, lc $nick) };
 }
 

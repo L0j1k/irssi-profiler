@@ -52,8 +52,9 @@ sub rescore {
         $store->set_hostinfo($network, delete $info->{host}, $info, $info->{checked});
     }
     if ($version >= 3) {
-        my $marks = $old->selectall_arrayref('SELECT kind, nick_key, nick, channel, mask, by, reason, time FROM marks');
-        $new->prepare('INSERT INTO marks (kind, nick_key, nick, channel, mask, by, reason, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        my @columns = qw(kind nick_key nick ident host channel mask by reason time);
+        my $marks = $old->selectall_arrayref('SELECT ' . join(', ', @columns) . ' FROM marks');
+        $new->prepare('INSERT INTO marks (' . join(', ', @columns) . ') VALUES (' . join(', ', ('?') x @columns) . ')')
             ->execute(@$_) for @$marks;
     }
 

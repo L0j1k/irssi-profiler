@@ -226,11 +226,13 @@ subtest 'kicks and bans' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);
     my $day = 86400;
-    $store->record_kick('efnet', { nick => 'Troll', channel => '#CHAN', by => 'op', reason => 'shamed' }, 11 * $day);
-    $store->record_kick('efnet', { nick => 'Troll', channel => '#CHAN', by => 'op', reason => 'shamed' }, 11 * $day);
+    my %troll = (nick => 'Troll', ident => '~lol', host => 'a.example.org');
+    $store->record_kick('efnet', { %troll, channel => '#CHAN', by => 'op', reason => 'shamed' }, 11 * $day);
+    $store->record_kick('efnet', { %troll, channel => '#CHAN', by => 'op', reason => 'shamed' }, 11 * $day);
     my $ban = { channel => '#chan', mask => '*!~lol@*.example.org', by => 'op' };
-    $store->record_ban('efnet', $ban, 12 * $day, 'Troll', 'troll2');
-    $store->record_ban('efnet', $ban, 12 * $day, 'Troll', 'troll2');
+    my @who = (\%troll, { %troll, nick => 'troll2', host => 'b.example.org' });
+    $store->record_ban('efnet', $ban, 12 * $day, @who);
+    $store->record_ban('efnet', $ban, 12 * $day, @who);
     $store->record_ban('efnet', { %$ban, mask => '*!*@*' }, 12 * $day);
 
     my @marks = $store->marks('efnet', 'troll');
@@ -239,6 +241,7 @@ subtest 'kicks and bans' => sub {
     is($marks[0]{reason}, 'shamed', 'kicks keep the reason');
     is($marks[0]{channel}, '#chan', 'and the channel, lowercased');
     is($marks[0]{by}, 'op', 'and who did it');
+    is("$marks[0]{ident}\@$marks[0]{host}", '~lol@a.example.org', 'and who it hit, since anyone can wear a nick');
     is($marks[1]{mask}, '*!~lol@*.example.org', 'bans keep the mask');
     is(scalar(() = $store->marks('efnet', 'troll2')), 1, 'a ban marks everyone it was matched to');
     is_deeply([ $store->marks('efnet', 'bob') ], [], 'bob is clean');
