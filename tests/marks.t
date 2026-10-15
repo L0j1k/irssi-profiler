@@ -1,0 +1,61 @@
+use strict;
+use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin/../src";
+
+use POSIX qw(strftime);
+use Test::More;
+
+use Profiler::Marks;
+use Profiler::Score;
+
+my $DAY = 86400;
+my $NOW = 1_000_000_000;
+
+subtest 'ban masks' => sub {
+    ok(Profiler::Marks::mask_matches('*!*@*.myvzw.com', 'bob', '~debian', '226.sub-203-0-113.MYVZW.com'), 'host glob');
+    ok(Profiler::Marks::mask_matches('*!~lol@*', 'troll', '~lol', 'a.example'), 'ident');
+    ok(Profiler::Marks::mask_matches('Troll!*@*', 'troll', '~x', 'a.example'), 'nick, any case');
+    ok(Profiler::Marks::mask_matches('t?oll!*@*', 'troll', '~x', 'a.example'), 'one character');
+    ok(!Profiler::Marks::mask_matches('*!*@*.myvzw.com', 'bob', '~debian', 'myvzw.com.evil.example'), 'anchored');
+    ok(!Profiler::Marks::mask_matches('*!*@a.b', 'bob', '~x', 'aXb'), 'dots are dots');
+};
+
+subtest 'who a ban was for' => sub {
+    my @here = (
+        { nick => 'troll', ident => '~lol', host => 'a.example.org' },
+        { nick => 'bob', ident => '~bob', host => 'cpe-1-2-3-4.example.net' },
+        { nick => 'troll', ident => '~lol', host => 'b.example.org' },
+    );
+    is_deeply([ Profiler::Marks::banned_nicks('*!~lol@*', \@here) ], ['troll'], 'each nick once');
+    is_deeply([ Profiler::Marks::banned_nicks('*!*@*.nowhere', \@here) ], [], 'nobody');
+    my @crowd = map { { nick => "n$_", ident => '~x', host => "h$_.example.net" } } 1 .. 4;
+    is_deeply([ Profiler::Marks::banned_nicks('*!*@*.example.net', \@crowd) ], [], 'too many to say who it was for');
+};
+
+subtest 'how much a record of kicks and bans counts' => sub {
+    my $kick = sub { { kind => 'kick', time => $NOW - $_[0] * $DAY, by => 'op', channel => '#chan', reason => 'r' } };
+    my $ban = sub { { kind => 'ban', time => $NOW - $_[0] * $DAY, by => 'op', channel => '#chan', mask => '*!*@x' } };
+    is(Profiler::Marks::weight([], $NOW), 0, 'nothing');
+    is(Profiler::Marks::weight([ $ban->(1000) ], $NOW), 1, 'a ban never fades');
+    is(Profiler::Marks::weight([ $kick->(0) ], $NOW), 0.5, 'a kick is half a ban');
+    ok(abs(Profiler::Marks::weight([ $kick->(90) ], $NOW) - 0.25) < 1e-9, 'and fades with the half-life');
+    ok(Profiler::Marks::counts([ $ban->(1000) ], $NOW), 'any ban counts');
+    ok(Profiler::Marks::counts([ $kick->(30) ], $NOW), 'so does a recent kick');
+    ok(!Profiler::Marks::counts([ $kick->(400) ], $NOW), 'but not one long ago');
+};
+
+subtest 'summary' => sub {
+    my $t = $NOW - 10 * $DAY;
+    my @marks = (
+        { kind => 'kick', time => $t - $DAY, by => 'op', channel => '#chan', reason => 'spam' },
+        { kind => 'ban', time => $t, by => 'alice', channel => '#chan', mask => '*!*@x' },
+        { kind => 'kick', time => $t, by => 'alice', channel => '#chan', reason => 'shamed' },
+    );
+    my $date = strftime('%Y-%m-%d', localtime $t);
+    is(Profiler::Marks::summary(\@marks), "banned 1x, kicked 2x, last $date by alice (shamed)", 'counts and the latest');
+    is(Profiler::Marks::summary([ $marks[1] ]), "banned 1x, last $date by alice", 'a ban has no reason');
+};
+
+done_testing;
