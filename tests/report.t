@@ -61,6 +61,12 @@ subtest 'a likely proxy is one warning line, whatever the verdict' => sub {
     like($text, $proxy, 'and why');
 };
 
+subtest 'a suspect from a new ISP says which' => sub {
+    my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', new_isp => { isp => 'telia.it', usual => 'myvzw.com' } }) };
+    is($word, 'SUSPECT', 'a suspect');
+    like($text, qr/doesn't match the history of bob: from an ISP they've never used, telia\.it, usually myvzw\.com;/, $text);
+};
+
 subtest 'a likely proxy they always use is not a warning' => sub {
     is_deeply(line({ %consistent, host_seen => 1 }, hostinfo => \%linode), [], 'a consistent join stays quiet');
     my ($word, $text) = @{ line({ %consistent, host_seen => 1 }, hostinfo => \%linode, verbose => 1) };

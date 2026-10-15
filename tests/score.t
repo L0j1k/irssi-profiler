@@ -110,6 +110,31 @@ subtest 'whether the nick has used this host before' => sub {
     ok(!judge($held, { %bob, host => 'held.example.org' })->{host_seen}, 'one only seen in quarantine is new');
 };
 
+subtest 'another address from the same ISP is a partial match, a new ISP is suspect' => sub {
+    # Verizon hands out addresses from all over, so hank is never on the
+    # same /24 twice.
+    my %hank = (ident => '~debian', realname => '---', version => $Profiler::Version::NO_REPLY, channel => '#chan');
+    my @hosts = map { "$_.sub-174-1$_-$_.myvzw.com" } 10 .. 29;
+    my $history = { sightings => [ map { { %hank, host => $hosts[$_], time => $NOW - $_ * $DAY } } 0 .. $#hosts ] };
+
+    my $r = judge($history, { %hank, host => '226.sub-203-0-113.myvzw.com' });
+    ok($r->{parts}{host} > 0, "a new Verizon address counts for them ($r->{parts}{host})");
+    is($r->{verdict}, 'consistent', 'and they are consistent');
+    ok(!$r->{new_isp}, 'not a new ISP');
+
+    $r = judge($history, { %hank, host => '1-2-3-4dyn.telia.it' });
+    is($r->{verdict}, 'suspect', 'a residential ISP they have never used is suspect');
+    is_deeply($r->{new_isp}, { isp => 'telia.it', usual => 'myvzw.com' }, 'and says which');
+
+    push @{ $history->{sightings} }, { %hank, host => '9-9-9-9dyn.telia.it', time => $NOW - 40 * $DAY };
+    $r = judge($history, { %hank, host => '1-2-3-4dyn.telia.it' });
+    ok(!$r->{new_isp}, 'not once they have used it before');
+
+    my $bouncer = { sightings => [ map { { %hank, host => 'box.example.org', time => $NOW - $_ * $DAY } } 1 .. 20 ] };
+    ok(!judge($bouncer, { %hank, host => '1-2-3-4dyn.telia.it' })->{new_isp},
+        'someone who has only used their own server has no usual ISP to leave');
+};
+
 subtest 'a jupe troll on an established nick is suspect' => sub {
     my $r = judge(profile_of(20), \%troll);
     is($r->{verdict}, 'suspect', 'verdict');
@@ -214,7 +239,7 @@ subtest 'an established custom or irccloud host is solid' => sub {
         return judge($h, { %isp, host => $host })->{match};
     };
     my $old_solid = $back_on->('box.example.org');
-    my $old_isp = $back_on->('cpe-198-51-100-7.elsewhere.example.com');
+    my $old_isp = $back_on->('cpe-198-51-100-7.elsewhere.example.net');
     # They can come out equal, and hash order changes the rounding.
     ok($old_solid >= $old_isp - 1e-9, "a solid host seen long ago doesn't drag the match down ($old_solid >= $old_isp)");
 };
@@ -286,7 +311,9 @@ subtest 'hosts in the same dynamic ISP pool are near matches' => sub {
     my $pool = judge($p, { %obs, host => 'cpe-203-0-113-17.san.res.rr.com' })->{parts}{host};
     my $exact = judge($p, { %obs, host => 'cpe-198-51-100-202.san.res.rr.com' })->{parts}{host};
     ok($pool > 0 && $pool < $exact, "pool $pool between 0 and exact $exact");
-    ok(judge($p, { %obs, host => 'cpe-203-0-113-17.nyc.res.rr.com' })->{parts}{host} < 0, 'another pool contradicts');
+    my $isp = judge($p, { %obs, host => 'cpe-203-0-113-17.nyc.res.rr.com' })->{parts}{host};
+    ok($isp > 0 && $isp < $exact, "another pool at the same ISP is near too ($isp)");
+    ok(judge($p, { %obs, host => 'cpe-203-0-113-17.nyc.res.example.net' })->{parts}{host} < 0, 'another ISP contradicts');
 
     ok(Profiler::Score::same_pool('d203-0-113-220.bchsia.telus.net', 'd203-0-113-9.bchsia.telus.net'), 'telus');
     ok(!Profiler::Score::same_pool('bob.users.example.net', 'troll.users.example.net'), 'named vhosts are not a pool');

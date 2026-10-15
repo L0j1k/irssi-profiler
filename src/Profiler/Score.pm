@@ -52,6 +52,10 @@ our $SOLID_HOST_WEIGHT = 2;
 our $SUBNET_CREDIT = 0.5;
 our $CLIENT_CREDIT = 0.5;
 
+# A past sighting from another address at the same ISP, like two Verizon
+# addresses in different ranges, counts as this much of a match.
+our $SAME_ISP_CREDIT = 0.5;
+
 # Below this confidence there isn't enough history to call anyone an impostor.
 # 0.5 is about three fresh sightings.
 our $MIN_CONFIDENCE = 0.5;
@@ -144,7 +148,9 @@ sub similarity {
             return 1 if $seen->{ip} eq $obs->{ip};
             return $SUBNET_CREDIT if same_subnet($seen->{ip}, $obs->{ip});
         }
-        return same_pool($seen->{host}, $obs->{host}) ? $SUBNET_CREDIT : 0;
+        return $SUBNET_CREDIT if same_pool($seen->{host}, $obs->{host});
+        my $isp = Profiler::Host::isp_domain($obs->{host});
+        return defined $isp && $isp eq (Profiler::Host::isp_domain($seen->{host}) // '') ? $SAME_ISP_CREDIT : 0;
     }
     return 1 if $seen->{$attr} eq $obs->{$attr};
     # Channel names aren't case sensitive. The store keeps them lowercased,
@@ -281,7 +287,29 @@ sub judge {
             $r{verdict} = 'mixed';
         }
     }
+    # People stay with their home or mobile ISP. Turning up from one they've
+    # never used is what a residential proxy network looks like, however
+    # well everything else was copied.
+    $r{new_isp} = new_isp(\@weighted, $obs);
+    $r{verdict} = 'suspect' if $r{new_isp} && $verdict ne 'unknown';
     return \%r;
+}
+
+# { isp, usual } when the observation comes from an ISP-generated name whose
+# ISP isn't in a history that has some, usual being the one they've used
+# most. undef otherwise, including for someone who has only used their own
+# server or bare addresses, since there's no usual ISP to leave.
+sub new_isp {
+    my ($weighted, $obs) = @_;
+    my $isp = Profiler::Host::isp_domain($obs->{host}) // return undef;
+    my %used;
+    for my $pair (@$weighted) {
+        my $seen_isp = Profiler::Host::isp_domain($pair->[0]{host}) // next;
+        $used{$seen_isp} += $pair->[1];
+    }
+    return undef if !%used || $used{$isp};
+    my ($usual) = sort { $used{$b} <=> $used{$a} || $a cmp $b } keys %used;
+    return { isp => $isp, usual => $usual };
 }
 
 # Does this person turn up from new hosts a lot? We look at every sighting

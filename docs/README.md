@@ -78,7 +78,10 @@ Each attribute of a join scores from -1 to +1 against that history:
   used every time scores 1 whether there are 3 sightings or 300. A past sighting from the same /24 or /64 counts as half a
   match. So does one from the same dynamic ISP pool, meaning host names that
   differ only in a first label with digits in it
-  (`cpe-198-51-100-202.san.res.rr.com` vs `cpe-203-0-113-17.san.res.rr.com`). So does a reply from the same client at another version (`irssi
+  (`cpe-198-51-100-202.san.res.rr.com` vs `cpe-203-0-113-17.san.res.rr.com`).
+  So does any other generated name from the same ISP
+  (`56.sub-198-51-100.myvzw.com` vs `226.sub-203-0-113.myvzw.com`), since
+  mobile and residential ISPs hand out addresses from all over. So does a reply from the same client at another version (`irssi
   v1.4.5` vs `v1.4.6`).
 - **Contradicts:** `-stability`. Stability is
   how dominant the usual value has been. Breaking an ident used every time
@@ -93,7 +96,7 @@ Host names come in kinds. IRC servers only show a name that resolves back
 to the address, so a name somebody chose, like `irc.example.net`, means
 they control that DNS. That's close to impossible to fake. An ISP's
 generated name (`cpe-198-51-100-202...`, anything with four or more digits
-in its first label, or labels like `dsl`, `dhcp`, `pool`, `cable`, `dyn`)
+ahead of its domain, or labels like `dsl`, `dhcp`, `pool`, `cable`, `dyn`)
 or a bare address can be had by anyone on the same ISP. IRCCloud's
 `id-NNN.<server>.irccloud.com` is an account number, so it's the same
 person whichever IRCCloud server they come through. When the host is just
@@ -148,6 +151,16 @@ trust under 0.5 anyway. The verdict is:
   sighting is quarantined: kept, but left out of the history, so an
   impostor can't train the profile. The warning notes it if the join came
   during a netsplit rejoin.
+
+  A join from an ISP-generated name is also suspect, however well the rest
+  matches, when the nick has used ISPs before but never this one (the ISP
+  is the registered domain, like `myvzw.com` or `telia.it`). People stick
+  with their home and mobile ISPs, so a new one is what a residential proxy
+  network looks like. The warning says `from an ISP they've never used,
+  telia.it, usually myvzw.com`. Someone who really changed ISP is held as
+  suspect until the move is promoted, about a week of joins. A nick that
+  has only used its own server or bare addresses has no usual ISP to
+  leave, so this doesn't apply.
 - **new host:** would be suspect, but the host is what disagrees, and none
   of ident, realname or client does. Channel and server don't count. Ident,
   realname and client (whichever we have) all match. This is usually the real

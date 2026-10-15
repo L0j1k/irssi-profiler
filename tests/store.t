@@ -117,9 +117,11 @@ subtest 'someone who moved stops being held within about a week' => sub {
         if (my $n = $store->promote_if_moved('n', 'bob', $now, 5, 7)) { push @promoted, $n }
         $verdicts{ $r->{verdict} }++ if $d >= 100;
     }
-    my $held = $verdicts{'new host'} // 0;
-    ok(!$verdicts{suspect}, 'a move with the same ident is never called suspect');
-    ok($held >= 5 && $held <= 8, "held as a new host for $held days after the move");
+    # A new ISP is suspect, since it's what a residential proxy looks like,
+    # until enough joins from it show they've moved.
+    my $held = $verdicts{suspect} // 0;
+    ok(!$verdicts{'new host'}, 'a move to another ISP is not a quiet new host');
+    ok($held >= 5 && $held <= 8, "held as a suspect for $held days after the move");
     is(scalar @promoted, 1, 'promoted once');
     is($promoted[0], $held, 'every quarantined sighting promoted');
 
