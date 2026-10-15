@@ -18,6 +18,8 @@ subtest 'kinds of host' => sub {
         'host86-1-2-3.range86-1.example.com'       => 'isp',
         'dynamic.example.net'                      => 'isp',
         'customer.dsl.example.net'                 => 'isp',
+        '226.sub-203-0-113.myvzw.com'             => 'isp',
+        '1-2-3-4dyn.telia.it'                      => 'isp',
         'id-100001.helmsley.irccloud.com'          => 'irccloud',
         'ID-100001.Charlton.IRCCloud.com'          => 'irccloud',
         'tinside.irccloud.com'                     => 'irccloud',
@@ -36,6 +38,14 @@ subtest 'kinds of host' => sub {
         '11.1.2.3'                                 => 'ip',
     );
     is(Profiler::Host::kind($_), $want{$_}, "$_ is $want{$_}") for sort keys %want;
+};
+
+subtest 'the ISP behind a generated name' => sub {
+    is(Profiler::Host::isp_domain('226.sub-203-0-113.myvzw.com'), 'myvzw.com', 'a .com');
+    is(Profiler::Host::isp_domain('1-2-3-4dyn.telia.it'), 'telia.it', 'a country domain');
+    is(Profiler::Host::isp_domain('host86-1-2-3.range86-1.example.co.uk'), 'example.co.uk', 'one with two parts');
+    is(Profiler::Host::isp_domain('irc.example.net'), undef, 'none for a custom name');
+    is(Profiler::Host::isp_domain('198.51.100.7'), undef, 'or an address');
 };
 
 subtest 'solid keys say when two hosts are the same person' => sub {

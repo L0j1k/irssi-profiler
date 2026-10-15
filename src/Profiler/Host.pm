@@ -3,6 +3,8 @@ package Profiler::Host;
 use strict;
 use warnings;
 
+use IO::Socket::SSL::PublicSuffix;
+
 # What kind of host name someone connects from, and whether it says who they
 # are. IRC servers only show a host name when it resolves back to the
 # address, so a name like irc.example.net means its owner controls that DNS.
@@ -21,11 +23,29 @@ use warnings;
 # Labels that mark a generated name even without digits in it.
 my $ISP_WORD = qr/^(?:a?dsl|vdsl|dhcp|dyn|dynamic|pool|cable|res|resi|residential|broadband|static|ppp|pppoe|cust|customer|clients?|fios|ftth|mobile|wireless|lte)$/;
 
-# A first label with this many digits was made from the address.
+# A name with this many digits ahead of its domain was made from the
+# address. Counting across every label catches ones like Verizon's
+# 226.sub-203-0-113.myvzw.com, where the first label alone is short.
 my $ISP_DIGITS = 4;
 
 # Hosts repeat a lot, especially during an import, so answers are kept.
-my (%kind_cache, %key_cache);
+my (%kind_cache, %key_cache, %domain_cache);
+
+my $public_suffix = IO::Socket::SSL::PublicSuffix->default;
+
+# The domain someone registered, like myvzw.com or example.co.uk, using the
+# public suffix list that comes with IO::Socket::SSL.
+sub registered_domain {
+    my ($host) = @_;
+    return $domain_cache{$host} //= scalar $public_suffix->public_suffix(lc $host, 1);
+}
+
+# The ISP's domain for a generated name, so two addresses from the same ISP
+# can be told apart from a change of ISP. undef for any other kind of host.
+sub isp_domain {
+    my ($host) = @_;
+    return kind($host) eq 'isp' ? registered_domain($host) : undef;
+}
 
 sub kind {
     my ($host) = @_;
@@ -38,8 +58,8 @@ sub classify {
     return 'ip' if $host =~ /^[\d.]+$/ || $host =~ /:/;
     return 'other' unless $host =~ /\./;
     return 'irccloud' if $host =~ /\.irccloud\.com$/;
-    my ($first) = split /\./, $host;
-    return 'isp' if ($first =~ tr/0-9//) >= $ISP_DIGITS;
+    my $labels = substr($host, 0, length($host) - length(registered_domain($host) // ''));
+    return 'isp' if ($labels =~ tr/0-9//) >= $ISP_DIGITS;
     return 'isp' if grep { /$ISP_WORD/ } split /\./, $host;
     return 'custom';
 }
