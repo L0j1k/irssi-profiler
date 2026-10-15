@@ -4,6 +4,7 @@ use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../src";
 
+use POSIX ();
 use Test::More;
 
 use Profiler::Report;
@@ -70,6 +71,24 @@ subtest 'a brand new nick on a bare address is always shown' => sub {
     is_deeply($bare->('198.51.100.7', 2), [], 'not once the nick has been seen');
     is_deeply($bare->('host.example.net', 0), [], 'nor from a host name');
     is_deeply($bare->('192.168.0.1', 0), [], 'nor from a spoof');
+};
+
+my @kicked = ({ kind => 'kick', time => 1_700_000_000, by => 'op', channel => '#chan', reason => 'shamed' });
+my $kicked_on = POSIX::strftime('%Y-%m-%d', localtime 1_700_000_000);
+
+subtest 'a nick with a record of kicks or bans always shows it' => sub {
+    my ($word, $text) = @{ line(\%consistent, marks => \@kicked) };
+    is($word, 'CONFIDENT', 'shown without verbose');
+    like($text, qr/; kicked 1x, last $kicked_on by op \(shamed\)$/, $text);
+};
+
+subtest 'someone who looks like a kicked or banned person' => sub {
+    my $evasion = { nick => 'trollguy', marks => \@kicked,
+        result => { match => 0.8, parts => { host => 0.5, ident => 1, realname => -1 } } };
+    my ($word, $text) = Profiler::Report::evader_line({ %job, nick => 'n3wguy' }, $evasion);
+    is($word, 'EVADER', 'gets its own word');
+    is($text, "n3wguy (~bob\@host.example.net) looks like trollguy (kicked 1x, last $kicked_on by op (shamed)): "
+        . 'host, ident match; match +0.80 against them', $text);
 };
 
 subtest 'a suspect from a new ISP says which' => sub {

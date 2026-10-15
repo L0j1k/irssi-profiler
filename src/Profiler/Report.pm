@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Profiler::Host;
+use Profiler::Marks;
 use Profiler::Rules;
 use Profiler::Store ();
 
@@ -21,6 +22,8 @@ our $NICKS_SHOWN = 3;
 #   min          the channel's min_trust
 #   verbose      whether to report a join that's fine
 #   hostinfo     the host lookup, with proxy set on a likely proxy
+#   marks        the nick's kicks and bans, when they still count
+#                (Profiler::Marks::counts), which always gets the line shown
 sub verdict_line {
     my ($job, $r, $ctx) = @_;
     my $hostinfo = $ctx->{hostinfo} // {};
@@ -72,9 +75,12 @@ sub verdict_line {
     # trolls back on a proxy turn up. It's weak on its own, but worth a look.
     my $bare = !$count && Profiler::Host::kind($job->{host}) eq 'ip';
     $seen .= ', from a bare address with no reverse DNS' if $bare;
+    # Kicks and bans are worth seeing every time the nick turns up.
+    my $marked = @{ $ctx->{marks} // [] } > 0;
+    $seen .= '; ' . Profiler::Marks::summary($ctx->{marks}) if $marked;
     # A nick change is always reported, since irssi's own line doesn't say
     # whether the new nick fits.
-    if ($word || $ctx->{verbose} || defined $job->{was} || $bare) {
+    if ($word || $ctx->{verbose} || defined $job->{was} || $bare || $marked) {
         my %word = (consistent => 'CONFIDENT', mixed => 'MIXED', unknown => 'UNKNOWN');
         return ($word // $word{ $r->{verdict} }, "$who has $score; $seen");
     }
@@ -99,6 +105,16 @@ sub variant_line {
     my $matches = what_matches($v, qw(host ident realname version)) // 'nothing contradicts';
     my $looks = sprintf('looks like %s%s: %s; trust %+.2f against their history', $variant->{nick}, $how, $matches, $v->{trust});
     return ($word, "VARIANT $v->{verdict}", defined $text ? "$text; $looks" : "$job->{nick} $looks");
+}
+
+# The warning for a join that looks like someone who was kicked or banned
+# (see Profiler::Evasion::best_match).
+sub evader_line {
+    my ($job, $evasion) = @_;
+    my $r = $evasion->{result};
+    my $matches = what_matches($r, qw(host ident realname version)) // 'nothing contradicts';
+    return ('EVADER', sprintf('%s (%s@%s) looks like %s (%s): %s; match %+.2f against them', $job->{nick},
+        $job->{ident}, $job->{host}, $evasion->{nick}, Profiler::Marks::summary($evasion->{marks}), $matches, $r->{match}));
 }
 
 # "ident, client match" for the attributes that scored in favour, or undef
