@@ -5,9 +5,12 @@
 # approach. It works on a temporary copy and prints timings and counts only:
 # no nicks, hosts or idents.
 #
-# usage: scripts/bench_fingerprint_search.pl [--skip-brute] FILE [JOINS]
+# usage: scripts/bench_fingerprint_search.pl [--skip-brute] [--marked N] FILE [JOINS]
 #   --skip-brute  leave out brute force, which takes about a second per
 #                 thousand nicks per join
+#   --marked N    time the ban evasion search (Profiler::Evasion) instead of
+#                 the prefilter, with N random nicks given a recent kick from
+#                 their latest sighting
 #   FILE   a profiler data file, e.g. build/profiler-data/efnet.sqlite
 #   JOINS  how many sample joins to search for (default 30), taken from
 #          random sightings in the file
@@ -22,14 +25,18 @@ use warnings;
 use File::Copy qw(copy);
 use File::Temp qw(tempdir);
 use FindBin;
+use Getopt::Long;
 use List::Util qw(sum0);
 use Time::HiRes qw(time);
 use lib "$FindBin::Bin/../src";
 
+use Profiler::Evasion;
 use Profiler::Score;
 use Profiler::Store;
 
-my $skip_brute = @ARGV && $ARGV[0] eq '--skip-brute' ? shift @ARGV : 0;
+my %opt = (marked => 0);
+GetOptions(\%opt, 'skip-brute', 'marked=i') or die "bad options\n";
+my $skip_brute = $opt{'skip-brute'};
 my ($path, $joins) = @ARGV;
 if (!$path || $path =~ /^-/ || !-f $path) {
     open my $fh, '<', $0 or die $!;
@@ -96,6 +103,31 @@ if (!$skip_brute) {
         push @candidates, scalar(keys %$all) - 1;
     }
     report('brute', \@times, \@candidates);
+}
+
+if ($opt{marked}) {
+    my $keys = $dbh->selectcol_arrayref("SELECT nick_key FROM sightings GROUP BY nick_key ORDER BY random() LIMIT $opt{marked}");
+    for my $key (@$keys) {
+        my $last = $store->profile('bench', $key)->{sightings}[-1];
+        $store->record_kick('bench', { nick => $key, ident => $last->{ident}, host => $last->{host},
+            channel => $last->{channel} // '#bench', by => 'bench', reason => 'bench' }, $now - 86400);
+    }
+    $store->flush;
+    $store->{profiles} = {};
+    my $t0 = time;
+    $store->all_marks('bench');
+    printf "evasion: loading %d marked nicks took %.2f s\n", scalar @$keys, time - $t0;
+    my (@times, @found);
+    for my $o (@obs) {
+        my ($own, $obs) = @$o;
+        my $t = time;
+        my $m = Profiler::Evasion::best_match($store, 'bench', $own, $obs, $now);
+        push @times, time - $t;
+        push @found, $m ? 1 : 0;
+    }
+    report('evasion', \@times, \@found);
+    printf "evasion: %d of %d sample joins looked like a marked nick\n", sum0(@found), scalar @found;
+    exit 0;
 }
 
 my $find = $dbh->prepare(
