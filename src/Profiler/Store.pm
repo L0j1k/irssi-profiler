@@ -335,10 +335,30 @@ sub record_ban {
 sub insert_mark {
     my ($self, $network, $kind, $mark, $time) = @_;
     my $nick = $mark->{nick};
-    $self->db($network, 1)->prepare_cached('INSERT OR IGNORE INTO marks
+    my $added = $self->db($network, 1)->prepare_cached('INSERT OR IGNORE INTO marks
         (kind, nick_key, nick, ident, host, channel, mask, by, reason, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute($kind, defined $nick ? lc $nick : undef, $nick, @$mark{qw(ident host)},
         lc $mark->{channel}, @$mark{qw(mask by reason)}, $time);
+    my $cache = $self->{marks}{ lc $network };
+    if ($cache && defined $nick && $added > 0) {
+        push @{ $cache->{ lc $nick } }, { kind => $kind, time => $time, channel => lc $mark->{channel},
+            map { $_ => $mark->{$_} } qw(ident host mask by reason) };
+    }
+}
+
+# Every kicked or banned nick's marks, as { <nick key> => [ marks oldest
+# first, as from marks() ] }. Loaded once and kept up to date, since the
+# evasion search looks through them on every join.
+sub all_marks {
+    my ($self, $network) = @_;
+    my $key = lc $network;
+    return $self->{marks}{$key} if $self->{marks}{$key};
+    my $dbh = $self->db($network) or return {};
+    my %by_nick;
+    my $rows = $dbh->selectall_arrayref('SELECT nick_key, kind, ident, host, channel, mask, by, reason, time FROM marks
+        WHERE nick_key IS NOT NULL ORDER BY time, id', { Slice => {} });
+    push @{ $by_nick{ delete $_->{nick_key} } }, $_ for @$rows;
+    return $self->{marks}{$key} = \%by_nick;
 }
 
 # A nick's kicks and bans, oldest first, each as { kind, ident, host,
