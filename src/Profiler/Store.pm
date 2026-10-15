@@ -25,7 +25,7 @@ use Profiler::Score;
 
 # Observation fields kept in each sighting. Missing ones are stored as NULL
 # and left out when loaded.
-my @FIELDS = qw(host ip ident realname server version channel proxy);
+my @FIELDS = qw(host ip ident realname server version channel proxy provider);
 
 my @HOSTINFO_FIELDS = qw(ip netname org origin proxy error);
 
@@ -64,6 +64,8 @@ my @SCHEMA = (
         time        INTEGER NOT NULL,
         host TEXT, ip TEXT, ident TEXT, realname TEXT, server TEXT,
         version TEXT, channel TEXT, proxy TEXT,
+        -- who the address belongs to, from whois (Profiler::Whois::provider)
+        provider TEXT,
         verdict     TEXT NOT NULL,
         quarantined INTEGER NOT NULL DEFAULT 0,
         reviewed    INTEGER NOT NULL DEFAULT 0,
@@ -100,8 +102,11 @@ my @SCHEMA = (
 # Stored in the database as PRAGMA user_version. Bump it whenever the schema
 # changes, and add the steps from the old version to %UPGRADE if the old
 # data still fits. A version with no steps is refused and gets re-imported.
-our $SCHEMA_VERSION = 3;
-my %UPGRADE = (2 => \@MARKS_SCHEMA);
+our $SCHEMA_VERSION = 4;
+my %UPGRADE = (
+    2 => \@MARKS_SCHEMA,
+    3 => ['ALTER TABLE sightings ADD COLUMN provider TEXT'],
+);
 
 sub new {
     my ($class, $dir) = @_;
@@ -145,14 +150,20 @@ sub db {
             $dbh->do('PRAGMA journal_mode = WAL');
             $dbh->do($_) for @SCHEMA;
             $dbh->do("PRAGMA user_version = $SCHEMA_VERSION");
+            $version = $SCHEMA_VERSION;
         }
-        elsif ($version != $SCHEMA_VERSION && $UPGRADE{$version}) {
-            # Each statement commits on its own here, and the version goes
-            # last, so an upgrade cut short just runs again next time.
-            $dbh->do($_) for @{ $UPGRADE{$version} };
-            $dbh->do("PRAGMA user_version = $SCHEMA_VERSION");
+        else {
+            # One version at a time, each in a transaction with its new
+            # version number, so an upgrade cut short picks up where it was.
+            while ($version < $SCHEMA_VERSION && $UPGRADE{$version}) {
+                $dbh->begin_work;
+                $dbh->do($_) for @{ $UPGRADE{$version} };
+                $version++;
+                $dbh->do("PRAGMA user_version = $version");
+                $dbh->commit;
+            }
         }
-        elsif ($version != $SCHEMA_VERSION) {
+        if ($version != $SCHEMA_VERSION) {
             my $which = $version < $SCHEMA_VERSION ? 'an older' : 'a newer';
             die "it was made by $which version of the profiler (schema $version, need $SCHEMA_VERSION);"
                 . " move it aside and run the import again\n";

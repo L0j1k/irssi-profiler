@@ -203,23 +203,32 @@ subtest 'a database from an older profiler is refused' => sub {
     like($@, qr/older version of the profiler.*import/s, 'says to re-import');
 };
 
-subtest 'a database from the last schema is upgraded where it is' => sub {
-    my $dir = tempdir(CLEANUP => 1);
-    my $store = Profiler::Store->new($dir);
-    $store->record('efnet', \%obs, 1000, 'unknown');
-    $store->close;
-    my $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
-    $dbh->do('DROP TABLE marks');
-    $dbh->do('PRAGMA user_version = 2');
-    $dbh->disconnect;
+subtest 'a database from an earlier schema is upgraded where it is' => sub {
+    # What each older schema lacked.
+    my %older = (
+        2 => ['DROP TABLE marks', 'ALTER TABLE sightings DROP COLUMN provider'],
+        3 => ['ALTER TABLE sightings DROP COLUMN provider'],
+    );
+    for my $version (sort keys %older) {
+        my $dir = tempdir(CLEANUP => 1);
+        my $store = Profiler::Store->new($dir);
+        $store->record('efnet', \%obs, 1000, 'unknown');
+        $store->close;
+        my $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
+        $dbh->do($_) for @{ $older{$version} }, "PRAGMA user_version = $version";
+        $dbh->disconnect;
 
-    $store = reopened($dir);
-    is($store->profile('efnet', 'bob')->{total}, 1, 'sightings are still there');
-    $store->record_kick('efnet', { nick => 'bob', channel => '#chan', by => 'op', reason => 'bye' }, 2000);
-    $store->close;
-    $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
-    is($dbh->selectrow_array('PRAGMA user_version'), $Profiler::Store::SCHEMA_VERSION, 'marked as upgraded');
-    is($dbh->selectrow_array('SELECT count(*) FROM marks'), 1, 'and the new table works');
+        $store = reopened($dir);
+        is($store->profile('efnet', 'bob')->{total}, 1, "schema $version: sightings are still there");
+        $store->record_kick('efnet', { nick => 'bob', channel => '#chan', by => 'op', reason => 'bye' }, 2000);
+        $store->record('efnet', { %obs, provider => 'example isp' }, 3000, 'consistent');
+        $store->close;
+        $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
+        is($dbh->selectrow_array('PRAGMA user_version'), $Profiler::Store::SCHEMA_VERSION, "schema $version: upgraded");
+        is($dbh->selectrow_array('SELECT count(*) FROM marks'), 1, "schema $version: kicks and bans work");
+        is($dbh->selectrow_array('SELECT provider FROM sightings WHERE time = 3000'), 'example isp',
+            "schema $version: and so do providers");
+    }
 };
 
 subtest 'kicks and bans' => sub {
