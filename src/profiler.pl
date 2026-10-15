@@ -367,6 +367,7 @@ sub judge {
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
 
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
+    my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
     my ($r, $count, $promoted, $variant, $evasion, @other_nicks, @marks);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
@@ -374,7 +375,9 @@ sub judge {
         $r = Profiler::Score::judge($profile, $obs, $now);
         my $own = $store->all_marks($job->{tag})->{ lc $job->{nick} } // [];
         @marks = @$own if Profiler::Marks::counts($own, $now);
-        $evasion = Profiler::Evasion::best_match($store, $job->{tag}, $job->{nick}, $obs, $now);
+        my $confident = $r->{verdict} eq 'consistent' && !Profiler::Rules::below_minimum($r, $min);
+        $evasion = Profiler::Evasion::best_match($store, $job->{tag}, $job->{nick}, $obs, $now,
+            $confident ? $profile->{first_seen} : undef);
         # A nick we barely know, or one that doesn't fit its own history, may
         # be someone familiar on a jupe-driven variant like bob_.
         $variant = Profiler::Variants::best_match($store, $job->{tag}, $job->{nick}, $obs, $now)
@@ -393,7 +396,7 @@ sub judge {
     my ($word, $text) = Profiler::Report::verdict_line($job, $r, {
         count       => $count,
         other_nicks => \@other_nicks,
-        min         => Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0,
+        min         => $min,
         verbose     => Irssi::settings_get_bool('profiler_verbose'),
         hostinfo    => $hostinfo,
         marks       => \@marks,

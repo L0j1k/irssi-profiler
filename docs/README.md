@@ -268,7 +268,13 @@ nick.
   are judged against that person: the nick's sightings that look like the
   one who was hit, plus the kicks and bans themselves. Trolls are often
   kicked after a join or two, so the match alone decides: at least 0.25, as
-  for a consistent verdict. That gives a line like `EVADER n3wguy
+  for a consistent verdict, from a host that matches or two of ident,
+  realname and client. An ident alone isn't enough, and on a proxy the
+  host isn't judged, so a proxy join needs two of the others. A nick
+  that's CONFIDENT on its own history is only an evader of a kick or ban
+  from before we first saw it: a regular who later gets banned under
+  another nick isn't evading with the one they already had. That gives a
+  line like `EVADER n3wguy
   (~lol@cpe-1-2-9-9.res.example.net) looks like trollguy (kicked 1x, last
   ...): host, ident match; match +0.80 against them`. A common ident on a
   big ISP can match a stranger, so read what matched.

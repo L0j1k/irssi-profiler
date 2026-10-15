@@ -130,6 +130,23 @@ wait_for '0 lookup\(s\) waiting' || fail "the stuck lookup never gave up"
 tmux send-keys -t "$session" '/script exec package SmokeServer; package SmokeChannel; sub nicks { ({ nick => "smoketroll", host => "~t\@smoke.example" }) } package main; our $s = bless({ tag => "efnet" }, "SmokeServer"); Irssi::Script::profiler::on_kick($s, "#CHAN", "smoketroll", "smokeop", "o\@op.example", "smoke reason"); Irssi::Script::profiler::on_ban_new(bless({ name => "#chan", server => $s }, "SmokeChannel"), { ban => "*!*\@smoke.example", setby => "smokeop!o\@op.example", time => 1700000000 }); Irssi::Script::profiler::cmd_profiler("show smoketroll", $s)' Enter
 wait_for 'banned 1x, kicked 1x' || fail "kicks and bans not recorded or not shown"
 
+# A regular who later gets banned under another nick isn't evading with the
+# nick they already had. A nick that shows up after the ban is. Verbose, so
+# the CONFIDENT line is printed.
+judge_as() {
+    echo "Irssi::Script::profiler::judge({ tag => \"efnet\", channel => \"#chan\", nick => \"$1\", ident => \"~o\", host => \"old.example\", version => \"smoke\" }, {})"
+}
+tmux send-keys -t "$session" "/set profiler_verbose on" Enter
+tmux send-keys -t "$session" "/script exec $(judge_as smokeregular) for 1 .. 4" Enter
+tmux send-keys -t "$session" '/script exec package SmokeChannel; sub nicks { ({ nick => "smokeold", host => "~o\@old.example" }) } package main; Irssi::Script::profiler::on_ban_new(bless({ name => "#chan", server => bless({ tag => "efnet" }, "SmokeServer") }, "SmokeChannel"), { ban => "*!*\@old.example", setby => "smokeop!o\@op.example", time => time + 1 })' Enter
+tmux send-keys -t "$session" "/script exec $(judge_as smokeregular); Irssi::Script::profiler::info('smoke after regular')" Enter
+wait_for 'smoke after regular' || fail "the regular's joins were not judged"
+before="$(tmux capture-pane -p -t "$session" | grep -B4 'smoke after regular')"
+grep -q 'CONFIDENT smokeregular' <<< "$before" || fail "the regular never became confident"
+grep -q 'EVADER smokeregular' <<< "$before" && fail "a regular known since before the ban is an evader"
+tmux send-keys -t "$session" "/script exec $(judge_as smokenewbie)" Enter
+wait_for 'EVADER smokenewbie' || fail "a new nick like someone banned is not an evader"
+
 tmux send-keys -t "$session" "/profiler show bob" Enter
 wait_for 'needs an active server' || fail "/profiler show without a server"
 

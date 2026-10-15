@@ -3,7 +3,7 @@ package Profiler::Evasion;
 use strict;
 use warnings;
 
-use List::Util qw(any);
+use List::Util qw(any min);
 
 use Profiler::Import;
 use Profiler::Marks;
@@ -22,23 +22,38 @@ use Profiler::Score;
 # Profiler::Score::judge said about the observation against that person,
 # or undef when nobody matches well enough. Trolls tend to get kicked after
 # a join or two, too little history for a verdict, so this goes by the match
-# alone: at least what a consistent verdict needs.
+# alone: at least what a consistent verdict needs, from enough_evidence.
+#
+# $known_since is optional: when the joiner's own nick is well established,
+# when we first saw it. Evading is getting kicked and coming back on a new
+# nick, so the kick comes first. Someone who already had this nick when they
+# got kicked on another one isn't evading with it.
 sub best_match {
-    my ($store, $network, $nick, $obs, $now) = @_;
+    my ($store, $network, $nick, $obs, $now, $known_since) = @_;
     my $all = $store->all_marks($network);
     my $best;
     for my $key (sort keys %$all) {
         next if $key eq lc $nick;
         my $marks = $all->{$key};
         next unless Profiler::Marks::counts($marks, $now);
+        next if defined $known_since && min(map { $_->{time} } @$marks) > $known_since;
         next unless any { looks_like($_, $obs) } @$marks;
         my $profile = $store->profile($network, $key);
         my $r = Profiler::Score::judge(person($profile, $marks), $obs, $now);
-        next unless $r->{match} >= $Profiler::Score::CONSISTENT_AT;
+        next unless $r->{match} >= $Profiler::Score::CONSISTENT_AT && enough_evidence($r);
         next if $best && $best->{result}{match} >= $r->{match};
         $best = { nick => $profile ? $profile->{nick} : $key, marks => $marks, result => $r };
     }
     return $best;
+}
+
+# A host that matches, or two of ident, realname and client. An ident on its
+# own is too little, and that's all a join from a proxy has left to judge,
+# since the host isn't. Channel and server are shared by everybody here.
+sub enough_evidence {
+    my ($r) = @_;
+    return 1 if ($r->{parts}{host} // 0) > 0;
+    return (grep { ($r->{parts}{$_} // 0) > 0 } qw(ident realname version)) >= 2;
 }
 
 # A kick or ban as a sighting: who it hit, where and when. undef when we
