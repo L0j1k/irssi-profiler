@@ -72,6 +72,36 @@ subtest 'more history means more trust' => sub {
     ok($t3 < $t30, "$t3 < $t30");
 };
 
+subtest 'a perfect match is a full match however thin the history' => sub {
+    # How much history there is goes into confidence. Counting it in the
+    # match too would square it in the trust.
+    for my $n (3, 30) {
+        my $r = judge(profile_of($n), \%bob);
+        ok(abs($r->{match} - 1) < 1e-9, "$n sightings: match $r->{match}");
+        ok(abs($r->{trust} - $r->{confidence}) < 1e-9, "$n sightings: trust $r->{trust} is the confidence");
+    }
+};
+
+subtest 'an attribute with little history does not drag down a well supported match' => sub {
+    # Imported sightings have no realname, server or version, so those come
+    # from a few live sightings while ident and channel have hundreds.
+    my %logged = map { $_ => $bob{$_} } qw(host ip ident channel);
+    my $history = { sightings => [
+        (map { { %logged, time => $NOW - $_ * $DAY } } 1 .. 200),
+        (map { { %bob, time => $NOW - $_ * $DAY } } 1 .. 2),
+    ] };
+    my $r = judge($history, { %bob, host => '192.0.2.9', ip => '192.0.2.9', proxy => 'acme hosting' });
+    ok(abs($r->{match} - 1) < 1e-9, "match $r->{match}");
+};
+
+subtest 'a contradicted ident, realname or client is never consistent' => sub {
+    for my $attr (qw(ident realname version)) {
+        my $r = judge(profile_of(20), { %bob, $attr => 'something else' });
+        ok($r->{match} > 0, "$attr: everything else matches, match $r->{match}");
+        is($r->{verdict}, 'mixed', "$attr: but it's only mixed");
+    }
+};
+
 subtest 'a jupe troll on an established nick is suspect' => sub {
     my $r = judge(profile_of(20), \%troll);
     is($r->{verdict}, 'suspect', 'verdict');
@@ -177,7 +207,8 @@ subtest 'an established custom or irccloud host is solid' => sub {
     };
     my $old_solid = $back_on->('box.example.org');
     my $old_isp = $back_on->('cpe-198-51-100-7.elsewhere.example.com');
-    ok($old_solid >= $old_isp, "a solid host seen long ago doesn't drag the match down ($old_solid >= $old_isp)");
+    # They can come out equal, and hash order changes the rounding.
+    ok($old_solid >= $old_isp - 1e-9, "a solid host seen long ago doesn't drag the match down ($old_solid >= $old_isp)");
 };
 
 subtest 'contradicting an attribute that always varies costs little' => sub {

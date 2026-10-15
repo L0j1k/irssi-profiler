@@ -164,8 +164,14 @@ sub similarity {
     return 0;
 }
 
-# One attribute's score from -1 to 1, or undef when it can't be judged because
-# one side has no value for it. A contradiction is scaled by how settled the
+# One attribute's score from -1 to 1 and how much history it had, as
+# familiarity, or an empty list when it can't be judged because one side has
+# no value for it.
+#
+# The score leaves out how much history there is, since that's what
+# confidence is for. A match is how familiar the value is next to how
+# familiar the attribute is, so a value used every time scores 1 after three
+# sightings or three hundred. A contradiction is scaled by how settled the
 # habit was: breaking an ident used every single time costs a lot, while a new
 # one from someone whose ident changes all the time costs next to nothing.
 #
@@ -176,8 +182,8 @@ sub similarity {
 # $weighted is the history as [sighting, age weight] pairs.
 sub attribute_score {
     my ($attr, $weighted, $obs) = @_;
-    return undef unless defined $obs->{$attr};
-    return undef if $attr eq 'host' && $obs->{proxy} && !defined solid_key_of($obs);
+    return unless defined $obs->{$attr};
+    return if $attr eq 'host' && $obs->{proxy} && !defined solid_key_of($obs);
 
     my ($total, $support, %by_value) = (0, 0);
     for my $pair (@$weighted) {
@@ -187,23 +193,25 @@ sub attribute_score {
         $by_value{ $seen->{$attr} } += $w;
         $support += $w * similarity($attr, $seen, $obs);
     }
-    return undef unless $total > 0;
-    return familiarity($support) if $support > 0;
+    return unless $total > 0;
+    return (familiarity($support) / familiarity($total), familiarity($total)) if $support > 0;
 
     my $stability = max(values %by_value) / $total;
-    return -$stability * familiarity($total);
+    return (-$stability, familiarity($total));
 }
 
 # The attribute scores averaged with their weights, using $host_weight for a
-# host that matches.
+# host that matches. An attribute with little history counts for less, so
+# realname from a couple of live sightings can't outweigh an ident seen
+# hundreds of times.
 sub weighted_match {
-    my ($parts, $host_weight) = @_;
+    my ($parts, $history, $host_weight) = @_;
     my ($sum, $weights) = (0, 0);
     for my $attr (keys %$parts) {
         my $s = $parts->{$attr};
-        my $w = $s < 0           ? $CONTRADICT_WEIGHT{$attr}
-              : $attr eq 'host' ? $host_weight
-              :                   $MATCH_WEIGHT{$attr};
+        my $w = $history->{$attr} * ($s < 0           ? $CONTRADICT_WEIGHT{$attr}
+                                   : $attr eq 'host' ? $host_weight
+                                   :                   $MATCH_WEIGHT{$attr});
         $sum += $w * $s;
         $weights += $w;
     }
@@ -225,10 +233,11 @@ sub judge {
     my @weighted = map { [ $_, age_weight($_, $now) ] } $profile ? history($profile) : ();
     my $confidence = familiarity(sum0(map { $_->[1] } @weighted));
 
-    my %parts;
+    my (%parts, %history);
     for my $attr (keys %MATCH_WEIGHT) {
-        my $s = attribute_score($attr, \@weighted, $obs);
-        $parts{$attr} = $s if defined $s;
+        my ($s, $familiarity) = attribute_score($attr, \@weighted, $obs) or next;
+        $parts{$attr} = $s;
+        $history{$attr} = $familiarity;
     }
     my $solid = defined solid_key_of($obs) && ($parts{host} // 0) > 0 && ($parts{ident} // 0) >= 0
         && any { same_solid_host($_->[0], $obs) } @weighted;
@@ -236,8 +245,8 @@ sub judge {
     # The match is a weighted average, so a heavy weight pulls it towards the
     # host's score. A solid host they've used only once, long ago, scores low,
     # and we don't want that to drag down an otherwise good match.
-    my $match = weighted_match(\%parts, $MATCH_WEIGHT{host});
-    $match = max($match, weighted_match(\%parts, $SOLID_HOST_WEIGHT)) if $solid;
+    my $match = weighted_match(\%parts, \%history, $MATCH_WEIGHT{host});
+    $match = max($match, weighted_match(\%parts, \%history, $SOLID_HOST_WEIGHT)) if $solid;
 
     my $verdict = $confidence < $MIN_CONFIDENCE ? 'unknown'
                 : $match < 0                    ? 'suspect'
@@ -254,9 +263,14 @@ sub judge {
         verdict    => $verdict,
         parts      => \%parts,
     );
+    my $identity_contradicted = grep { ($parts{$_} // 0) < 0 } @IDENTITY_ATTRS;
+    # A different ident, realname or client means it may well be someone
+    # else, like a second person on the same shell box, however much else
+    # matches.
+    $r{verdict} = 'mixed' if $verdict eq 'consistent' && $identity_contradicted;
     # Channel and server are weak evidence, so on their own they can't make a
     # suspect. A known nick in a new channel is just mixed.
-    if ($verdict eq 'suspect' && !grep { ($parts{$_} // 0) < 0 } @IDENTITY_ATTRS) {
+    if ($verdict eq 'suspect' && !$identity_contradicted) {
         if (($parts{host} // 0) < 0) {
             $r{verdict} = 'new host';
             $r{host_changes_often} = host_changes_often($profile, $obs);

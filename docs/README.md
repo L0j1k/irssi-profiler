@@ -70,13 +70,14 @@ and less, losing half their weight every `profiler_half_life_days` (default 90).
 
 Each attribute of a join scores from -1 to +1 against that history:
 
-- **Matches:** `familiarity(weight of matching sightings)`, where familiarity
-  is `w / (w + 3)`. A past sighting from the same /24 or /64 counts as half a
+- **Matches:** `familiarity(weight of matching sightings) /
+  familiarity(total weight)`, where familiarity is `w / (w + 3)`. A value
+  used every time scores 1 whether there are 3 sightings or 300. A past sighting from the same /24 or /64 counts as half a
   match. So does one from the same dynamic ISP pool, meaning host names that
   differ only in a first label with digits in it
   (`cpe-198-51-100-202.san.res.rr.com` vs `cpe-203-0-113-17.san.res.rr.com`). So does a reply from the same client at another version (`irssi
   v1.4.5` vs `v1.4.6`).
-- **Contradicts:** `-(stability × familiarity(total weight))`. Stability is
+- **Contradicts:** `-stability`. Stability is
   how dominant the usual value has been. Breaking an ident used every time
   costs a lot, while a new ident from someone whose ident always changes
   costs almost nothing.
@@ -126,9 +127,14 @@ failing to match is telling. A host is hard to fake.
 | server    | 0.05                 | 0.05                     |
 | channel   | 0.10                 | 0.05                     |
 
-**match** is the weighted average of the attribute scores. **confidence** is
-the familiarity of the total sighting weight. **trust** is `confidence ×
-match`, and that's what the rules' `min_trust` is compared to. Unknown
+**match** is the weighted average of the attribute scores, with each weight
+also multiplied by the familiarity of that attribute's total weight. Imported
+history has no realname, server or version, so those come from a few live
+sightings, and they count for less than an ident seen hundreds of times.
+**confidence** is the familiarity of the total sighting weight. **trust** is
+`confidence × match`, and that's what the rules' `min_trust` is compared to.
+A perfect match has trust equal to its confidence: 0.5 at about three recent
+sightings, 0.77 at ten, 0.87 at twenty. Unknown
 nicks are left out of that comparison, since their confidence keeps their
 trust under 0.5 anyway. The verdict is:
 
@@ -149,7 +155,9 @@ trust under 0.5 anyway. The verdict is:
   quarantined the same way as a suspect.
 - **mixed:** match from 0 to 0.25. Typical of the real person on a new ISP,
   or a careful impostor who copied everything except the host. The two
-  can't be told apart.
+  can't be told apart. A contradicted ident, realname or client is mixed
+  however well the rest matches, since that can be a second person on the
+  same shell box.
 - **consistent:** everything above that.
 
 Someone who really moved would otherwise stay suspect for months, since
