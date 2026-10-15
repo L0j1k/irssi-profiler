@@ -103,6 +103,8 @@ sub say_in {
 
 sub info {
     my ($text) = @_;
+    # Perl errors end in a newline, which irssi would print as an empty line.
+    $text =~ s/\s+$//;
     say_in(undef, undef, $text);
 }
 

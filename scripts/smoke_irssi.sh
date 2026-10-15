@@ -82,6 +82,13 @@ check_word UNKNOWN "$grey"
 check_word VARIANT "$grey"
 check_word MOVED "$grey"
 
+# Perl errors end in a newline, which irssi prints as an empty line.
+# The text avoids the word "error", which the last check looks for.
+tmux send-keys -t "$session" '/script exec Irssi::Script::profiler::info("smoke oops line" . chr(10)); Irssi::Script::profiler::info("smoke after oops")' Enter
+wait_for 'smoke after oops' || fail "oops lines not printed"
+[[ "$(tmux capture-pane -p -t "$session" | grep -A1 'smoke oops line' | tail -1)" == *'smoke after oops'* ]] \
+    || fail "an error's trailing newline printed an empty line"
+
 tmux send-keys -t "$session" "/profiler list" Enter
 wait_for 'efnet #chan 0.5' || fail "/profiler list did not show the watch"
 
