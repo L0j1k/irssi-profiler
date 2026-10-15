@@ -3,6 +3,7 @@ package Profiler::Report;
 use strict;
 use warnings;
 
+use Profiler::Host;
 use Profiler::Rules;
 use Profiler::Store ();
 
@@ -67,9 +68,13 @@ sub verdict_line {
         my $against = grep { $_ < 0 } values %{ $r->{parts} };
         return ($against ? 'WARNING' : $word // 'UNPROVEN', "$who has $score, under $min; $seen$why");
     }
+    # A nick nobody has seen, on an address without a name, is how a lot of
+    # trolls back on a proxy turn up. It's weak on its own, but worth a look.
+    my $bare = !$count && Profiler::Host::kind($job->{host}) eq 'ip';
+    $seen .= ', from a bare address with no reverse DNS' if $bare;
     # A nick change is always reported, since irssi's own line doesn't say
     # whether the new nick fits.
-    if ($word || $ctx->{verbose} || defined $job->{was}) {
+    if ($word || $ctx->{verbose} || defined $job->{was} || $bare) {
         my %word = (consistent => 'CONFIDENT', mixed => 'MIXED', unknown => 'UNKNOWN');
         return ($word // $word{ $r->{verdict} }, "$who has $score; $seen");
     }

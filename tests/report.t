@@ -61,6 +61,17 @@ subtest 'a likely proxy is one warning line, whatever the verdict' => sub {
     like($text, $proxy, 'and why');
 };
 
+subtest 'a brand new nick on a bare address is always shown' => sub {
+    my %unknown = (verdict => 'unknown', trust => 0, match => 0, confidence => 0, parts => {});
+    my $bare = sub { [ Profiler::Report::verdict_line({ %job, host => $_[0] }, \%unknown, { count => $_[1], min => 0.5 }) ] };
+    my ($word, $text) = @{ $bare->('198.51.100.7', 0) };
+    is($word, 'UNKNOWN', 'shown without verbose');
+    like($text, qr/never seen before, from a bare address with no reverse DNS$/, $text);
+    is_deeply($bare->('198.51.100.7', 2), [], 'not once the nick has been seen');
+    is_deeply($bare->('host.example.net', 0), [], 'nor from a host name');
+    is_deeply($bare->('192.168.0.1', 0), [], 'nor from a spoof');
+};
+
 subtest 'a suspect from a new ISP says which' => sub {
     my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', new_isp => { isp => 'telia.it', usual => 'myvzw.com' } }) };
     is($word, 'SUSPECT', 'a suspect');
