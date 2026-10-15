@@ -221,7 +221,7 @@ someone starts with a one-word summary in its own colour:
 
 | word      | colour        | means |
 |-----------|---------------|-------|
-| WARNING   | bright red    | under the channel's min_trust with something against them, or on a likely proxy |
+| WARNING   | bright red    | under the channel's min_trust with something against them, or on a likely proxy that's new for them |
 | UNPROVEN  | bright purple | under the channel's min_trust, but everything matches: just not much history yet |
 | SUSPECT   | bright yellow | doesn't match the nick's history |
 | MIXED     | bright cyan   | partly matches |
@@ -232,8 +232,10 @@ someone starts with a one-word summary in its own colour:
 | MOVED     | grey          | held sightings promoted to a new usual host |
 
 CONFIDENT, MIXED and UNKNOWN lines show with `profiler_verbose` on, or for
-a nick change. A join from a likely proxy always gets one line. It says
-WARNING in place of any word but SUSPECT, and still gives the verdict. To change a colour, override the format in your theme, for
+a nick change. A join from a likely proxy the nick hasn't been seen on
+before always gets one line. It says WARNING in place of any word but
+SUSPECT, and still gives the verdict. A proxy they're always on is probably
+their own server, so it's treated like any other host. To change a colour, override the format in your theme, for
 example:
 
     "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n {channick $0}"; };

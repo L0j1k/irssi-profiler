@@ -102,6 +102,14 @@ subtest 'a contradicted ident, realname or client is never consistent' => sub {
     }
 };
 
+subtest 'whether the nick has used this host before' => sub {
+    ok(judge(profile_of(3), \%bob)->{host_seen}, 'the usual host');
+    ok(!judge(profile_of(3), { %bob, host => 'elsewhere.example.org' })->{host_seen}, 'a new one');
+    my $held = profile_of(3);
+    push @{ $held->{sightings} }, { %bob, host => 'held.example.org', time => $NOW, quarantined => 1 };
+    ok(!judge($held, { %bob, host => 'held.example.org' })->{host_seen}, 'one only seen in quarantine is new');
+};
+
 subtest 'a jupe troll on an established nick is suspect' => sub {
     my $r = judge(profile_of(20), \%troll);
     is($r->{verdict}, 'suspect', 'verdict');

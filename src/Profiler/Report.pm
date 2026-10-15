@@ -48,9 +48,10 @@ sub verdict_line {
         return ('SUSPECT', "$who doesn't match the history of $job->{nick}$when; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");
     }
-    # A likely proxy is worth a warning even from someone we know, so it
-    # takes over whichever quieter word the join would have had.
-    my $word = $proxy ? 'WARNING' : undef;
+    # A likely proxy the nick hasn't been on before is worth a warning even
+    # from someone we know, so it takes over whichever quieter word the join
+    # would have had. One they're always on is probably their own server.
+    my $word = $proxy && !$r->{host_seen} ? 'WARNING' : undef;
     # Same person by everything but the host, most likely. A quiet note
     # rather than a warning, so SUSPECT keeps meaning something.
     if ($r->{verdict} eq 'new host') {
