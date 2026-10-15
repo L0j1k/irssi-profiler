@@ -76,27 +76,42 @@ my %WORD_COLOUR = (
     CONFIDENT   => '%G',
     'NEW HOST'  => '%w',
     UNKNOWN     => '%w',
-    VARIANT     => '%w',
     MOVED       => '%w',
 );
 
+# "looks like bob" leads with VARIANT, coloured by how well the join fits
+# bob's history. It comes after the join's own word, or alone.
+my %VARIANT_COLOUR = (
+    'VARIANT consistent' => '%G',
+    'VARIANT mixed'      => '%C',
+);
+
 sub word_format {
-    my ($word) = @_;
-    (my $name = lc $word) =~ tr/ /_/;
+    my (@words) = @_;
+    (my $name = lc join '_', @words) =~ tr/ /_/;
     return "profiler_$name";
 }
 
+# The colours have to be in the format, since % in the text is kept literal,
+# so there's a format for every pair of words a line can lead with.
+sub coloured { my ($word, $colour) = @_; (my $shown = $word) =~ s/ (consistent|mixed)$//; "$colour$shown%n" }
+my %ONE_WORD = (%WORD_COLOUR, %VARIANT_COLOUR);
 Irssi::theme_register([
     profiler_line => '{channick profiler: $0}',
-    map { word_format($_) => "{channick profiler:} $WORD_COLOUR{$_}$_%n {channick \$0}" } sort keys %WORD_COLOUR,
+    (map { word_format($_) => '{channick profiler:} ' . coloured($_, $ONE_WORD{$_}) . ' {channick $0}' } sort keys %ONE_WORD),
+    map {
+        my $word = $_;
+        map { word_format($word, $_) => '{channick profiler:} ' . coloured($word, $WORD_COLOUR{$word}) . ' '
+            . coloured($_, $VARIANT_COLOUR{$_}) . ' {channick $0}' } sort keys %VARIANT_COLOUR
+    } sort keys %WORD_COLOUR,
 ]);
 
 # Prints one of our lines in a channel's window, or in the status window when
-# there's no channel or the server has gone. $word is one of %WORD_COLOUR's
-# for a line about someone.
+# there's no channel or the server has gone. @words, for a line about
+# someone, is one of %WORD_COLOUR's, then one of %VARIANT_COLOUR's, or both.
 sub say_in {
-    my ($tag, $channel, $text, $word) = @_;
-    my $format = $word ? word_format($word) : 'profiler_line';
+    my ($tag, $channel, $text, @words) = @_;
+    my $format = @words ? word_format(@words) : 'profiler_line';
     my $server = defined $tag ? Irssi::server_find_tag($tag) : undef;
     return $server->printformat($channel, MSGLEVEL_CLIENTCRAP, $format, $text) if $server && defined $channel;
     Irssi::printformat(MSGLEVEL_CLIENTCRAP, $format, $text);
@@ -367,14 +382,13 @@ sub judge {
         verbose     => Irssi::settings_get_bool('profiler_verbose'),
         hostinfo    => $hostinfo,
     });
-    $say->($text, $word) if $word;
-
     if ($variant) {
-        my $v = $variant->{result};
-        my $how = $variant->{linked} ? ", who they've switched nicks with before" : '';
-        my $matches = Profiler::Report::what_matches($v, qw(host ident realname version)) // 'nothing contradicts';
-        $say->(sprintf('%s looks like %s%s: %s; trust %+.2f against their history',
-            $job->{nick}, $variant->{nick}, $how, $matches, $v->{trust}), 'VARIANT');
+        my $variant_word;
+        ($word, $variant_word, $text) = Profiler::Report::variant_line($job, $variant, $word, $text);
+        $say->($text, grep { defined } $word, $variant_word);
+    }
+    elsif ($word) {
+        $say->($text, $word);
     }
 
     if ($promoted) {

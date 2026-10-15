@@ -68,4 +68,19 @@ subtest 'nicks they change between' => sub {
     like($text, qr/also zed, lex, lexie$/, 'three are all shown');
 };
 
+subtest 'a variant goes after the verdict, coloured by how well it fits' => sub {
+    my %variant = (nick => 'Sneezy', result => { verdict => 'consistent', trust => 0.34,
+        parts => { host => 0.5, ident => 1, realname => 1, version => 1, channel => 1 } });
+    my ($word, $vword, $text) = Profiler::Report::variant_line({ %job, nick => 'Sneezy_' }, \%variant, 'UNKNOWN', 'never seen before');
+    is($word, 'UNKNOWN', 'keeps the verdict word');
+    is($vword, 'VARIANT consistent', 'and adds one for the variant');
+    is($text, 'never seen before; looks like Sneezy: host, ident, realname, client match; trust +0.34 against their history', $text);
+
+    ($word, $vword, $text) = Profiler::Report::variant_line({ %job, nick => 'bob_' },
+        { %variant, nick => 'bob', linked => 1, result => { %{ $variant{result} }, verdict => 'mixed' } });
+    is($word, undef, 'with no verdict line');
+    is($vword, 'VARIANT mixed', 'the variant word comes alone');
+    like($text, qr/^bob_ looks like bob, who they've switched nicks with before: /, $text);
+};
+
 done_testing;

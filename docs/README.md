@@ -194,7 +194,13 @@ kinds of related nick:
 
 Each candidate (at most 20) is judged on host and ident like any other
 join. The nick only picks who to compare with. If the best one comes out
-consistent or mixed you get a line like:
+consistent or mixed, it's added to the join's own line after a second word,
+VARIANT, in green for consistent and cyan for mixed:
+
+    UNKNOWN VARIANT Sneezy_ (~Sneezy@203.0.113.195, client: (no reply)) has trust +0.00 (unknown, match +0.00, confidence 0.00); never seen before; looks like Sneezy: host, ident, realname, client match; trust +0.34 against their history
+
+When the join gets no line of its own (a quiet consistent join), the
+variant comes alone:
 
     VARIANT bob_ looks like bob, who they've switched nicks with before: host, ident match; trust +0.71 against their history
 
@@ -222,7 +228,7 @@ someone starts with a one-word summary in its own colour:
 | CONFIDENT | bright green  | consistent with the nick's history |
 | NEW HOST  | grey          | only the host is new |
 | UNKNOWN   | grey          | too little history to say |
-| VARIANT   | grey          | looks like a related nick |
+| VARIANT   | bright green or cyan | looks like a related nick, and fits its history (green) or partly (cyan) |
 | MOVED     | grey          | held sightings promoted to a new usual host |
 
 CONFIDENT, MIXED and UNKNOWN lines show with `profiler_verbose` on, or for

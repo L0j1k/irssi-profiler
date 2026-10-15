@@ -81,6 +81,19 @@ sub nick_list {
     return join(', ', @nicks[0 .. $NICKS_SHOWN - 1]) . ' and ' . (@nicks - $NICKS_SHOWN) . ' more';
 }
 
+# Adds "looks like bob" to a join's verdict line, or makes a line of its own
+# when the join didn't get one. Returns the verdict word (undef without a
+# verdict line), "VARIANT <verdict>" for the variant's word, whose colour says
+# how well the join fits bob's history, and the text.
+sub variant_line {
+    my ($job, $variant, $word, $text) = @_;
+    my $v = $variant->{result};
+    my $how = $variant->{linked} ? ", who they've switched nicks with before" : '';
+    my $matches = what_matches($v, qw(host ident realname version)) // 'nothing contradicts';
+    my $looks = sprintf('looks like %s%s: %s; trust %+.2f against their history', $variant->{nick}, $how, $matches, $v->{trust});
+    return ($word, "VARIANT $v->{verdict}", defined $text ? "$text; $looks" : "$job->{nick} $looks");
+}
+
 # "ident, client match" for the attributes that scored in favour, or undef
 # when none did.
 sub what_matches {

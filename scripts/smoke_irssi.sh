@@ -80,8 +80,21 @@ check_word MIXED "$(bright 6)"
 check_word CONFIDENT "$(bright 2)"
 check_word 'NEW HOST' "$grey"
 check_word UNKNOWN "$grey"
-check_word VARIANT "$grey"
 check_word MOVED "$grey"
+
+# A variant gets a second word after the verdict's, coloured by how well the
+# join fits the other nick's history, or comes alone.
+check_words() {
+    local first="$1" first_colour="$2" variant="$3" colour="$4" line
+    tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::say_in(undef, undef, 'smoke $variant pair', $first 'VARIANT $variant')" Enter
+    wait_for "VARIANT smoke $variant pair" || fail "$variant variant line not printed"
+    line="$(tmux capture-pane -p -e -t "$session" | grep "smoke $variant pair" | tail -1)"
+    grep -qE "${first_colour}VARIANT" <<< "$line" || fail "VARIANT is not after the verdict word"
+    grep -qE "${colour}VARIANT" <<< "$line" || fail "$variant VARIANT is not in its colour"
+    grep -qE $'\e\\[(22;)?36m'" ?smoke $variant pair" <<< "$line" || fail "text after VARIANT is not dark cyan"
+}
+check_words "'UNKNOWN'," "UNKNOWN.*" consistent "$(bright 2)"
+check_words '' '' mixed "$(bright 6)"
 
 # Perl errors end in a newline, which irssi prints as an empty line.
 # The text avoids the word "error", which the last check looks for.
