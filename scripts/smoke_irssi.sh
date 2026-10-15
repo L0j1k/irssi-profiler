@@ -106,6 +106,23 @@ wait_for 'smoke after oops' || fail "oops lines not printed"
 tmux send-keys -t "$session" "/profiler list" Enter
 wait_for 'efnet #chan 0.5' || fail "/profiler list did not show the watch"
 
+# A WHOIS whose end never comes (say the server went away mid-reply) must
+# not leave the nick waiting for good. The fake server swallows everything.
+tmux send-keys -t "$session" "/set profiler_version_timeout 1" Enter
+tmux send-keys -t "$session" "/set profiler_whois_timeout 3" Enter
+tmux send-keys -t "$session" '/script exec package SmokeServer; sub redirect_event {} sub send_raw {} package main; Irssi::Script::profiler::send_whois(bless({ tag => "smoke" }, "SmokeServer"), { tag => "smoke", channel => "#chan", nick => "stuckbob", ident => "~bob", host => "192.168.0.1" })' Enter
+tmux send-keys -t "$session" "/profiler list" Enter
+wait_for '1 lookup\(s\) waiting' || fail "the stuck lookup is not listed"
+# Past the VERSION timeout but not the WHOIS one, it's still waiting.
+sleep 2
+tmux send-keys -t "$session" "/profiler list" Enter
+sleep 0.5
+[[ "$(tmux capture-pane -p -t "$session" | grep -c '1 lookup(s) waiting')" == 2 ]] \
+    || fail "the lookup stopped waiting at the VERSION timeout"
+sleep 2
+tmux send-keys -t "$session" "/profiler list" Enter
+wait_for '0 lookup\(s\) waiting' || fail "the stuck lookup never gave up"
+
 tmux send-keys -t "$session" "/profiler show bob" Enter
 wait_for 'needs an active server' || fail "/profiler show without a server"
 

@@ -51,7 +51,10 @@ about 80 seconds and writes 20 MB. Run it with `--help` for the options.
    burst, then drains at the normal rate.
 2. The WHOIS reply gives realname and server. The VERSION reply gives the
    client. If nothing comes back within `profiler_version_timeout` seconds,
-   the client is recorded as `(no reply)`. Once both are in, the joiner's host is resolved
+   the client is recorded as `(no reply)`. If the WHOIS hasn't ended within
+   `profiler_whois_timeout` seconds (default 60), say because the server went
+   away mid-reply, the join is judged on what it gave us. `/profiler list`
+   shows how many lookups are still waiting. Once both are in, the joiner's host is resolved
    and run through the system `whois` in a child process. The registry record
    is checked for VPN/proxy/Tor/hosting keywords. Results are cached per host
    for `profiler_hostinfo_max_age` seconds.

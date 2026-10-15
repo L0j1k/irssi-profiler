@@ -248,6 +248,15 @@ sub send_whois {
         $entry->{version} //= $Profiler::Version::NO_REPLY;
         finish_if_ready($key);
     }, undef);
+    # If the end of the whois never comes, say the server went away
+    # mid-reply, judge on what we have, as for someone who already left.
+    # Otherwise the nick waits for good and later joins queue up behind it.
+    Irssi::timeout_add_once(1000 * Irssi::settings_get_int('profiler_whois_timeout'), sub {
+        return unless $pending{$key} && $pending{$key} == $entry;
+        $entry->{whois_done} = 1;
+        $entry->{version} //= $Profiler::Version::NO_REPLY;
+        finish_if_ready($key);
+    }, undef);
 }
 
 # :server 311 me nick ident host * :realname
@@ -435,6 +444,7 @@ sub cmd_profiler {
             my $q = $queues{$tag};
             info("$tag: " . $q->length . " whois queued" . ($q->paused(time) ? ', paused after a burst of joins' : ''));
         }
+        info(scalar(keys %pending) . " lookup(s) waiting on whois or VERSION replies");
     }
     elsif ($subcmd eq 'show' && length $arg) {
         return info("/profiler show needs an active server") unless $server;
@@ -495,6 +505,7 @@ Irssi::settings_add_int('profiler', 'profiler_recheck', 600);
 Irssi::settings_add_int('profiler', 'profiler_hostinfo_max_age', 7 * 24 * 3600);
 Irssi::settings_add_int('profiler', 'profiler_lookup_timeout', 20);
 Irssi::settings_add_int('profiler', 'profiler_version_timeout', 10);
+Irssi::settings_add_int('profiler', 'profiler_whois_timeout', 60);
 Irssi::settings_add_int('profiler', 'profiler_half_life_days', 90);
 Irssi::settings_add_int('profiler', 'profiler_promote_after_sightings', $Profiler::Score::PROMOTE_AFTER_SIGHTINGS);
 Irssi::settings_add_int('profiler', 'profiler_promote_after_days', $Profiler::Score::PROMOTE_AFTER_DAYS);
