@@ -69,4 +69,14 @@ subtest 'it never overwrites' => sub {
     like($@, qr/already exists/, $@);
 };
 
+subtest 'the script, in a process of its own' => sub {
+    my $from = old_store();
+    my $out = tempdir(CLEANUP => 1);
+    my $output = `'$FindBin::Bin/../scripts/rescore.pl' --out '$out/new' '$from' 2>&1`;
+    is($?, 0, 'succeeds') or diag $output;
+    like($output, qr/rescored 23 sightings/, 'says how many');
+    like($output, qr/^\s+suspect\s+\d+\s+\d+/m, 'and how the verdicts moved');
+    ok(-f "$out/new/efnet.sqlite", 'and writes the file');
+};
+
 done_testing;

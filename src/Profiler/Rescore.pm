@@ -4,6 +4,8 @@ use strict;
 use warnings;
 
 use DBI;
+# Loaded here for OPEN_READONLY, which DBI would only load at connect.
+use DBD::SQLite;
 
 use Profiler::Import;
 use Profiler::Store;
