@@ -84,6 +84,7 @@ Each attribute of a join scores from -1 to +1 against that history:
   match. So does one from the same dynamic ISP pool, meaning host names that
   differ only in a first label with digits in it
   (`cpe-198-51-100-202.san.res.rr.com` vs `cpe-203-0-113-17.san.res.rr.com`).
+  IRCCloud's `id-NNN` names aren't a pool, since the number is the account.
   So does any other generated name from the same ISP
   (`56.sub-198-51-100.myvzw.com` vs `226.sub-203-0-113.myvzw.com`), since
   mobile and residential ISPs hand out addresses from all over. Bare
@@ -255,9 +256,10 @@ nick.
   or who joined in the week before it (logs). A ban fitting more than three
   nicks is too broad to say who it was for. Lifted bans are ignored, since
   bans get lifted to keep the list short.
-- **How much it counts.** A ban counts 1 for good. A kick counts 0.5 and
-  fades on `profiler_half_life_days`. A record counts from 0.25: any ban,
-  or a kick within the last half-life.
+- **How much it counts.** A ban counts 1 and a kick 0.5, and both fade on
+  `profiler_half_life_days`. Bans fade too since bots kick whoever an op
+  bans. A record counts from 0.25: a ban within the last two half-lives,
+  or a kick within the last one.
 - **On the nick's own line.** A nick whose record counts always gets its
   line, ending with something like `banned 1x, kicked 2x, last 2026-09-02
   by alice (shamed)`. `/profiler show <nick>` lists the record and who

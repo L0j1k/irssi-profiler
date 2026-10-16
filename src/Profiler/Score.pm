@@ -105,9 +105,12 @@ sub same_subnet {
 # cpe-198-51-100-202.san.res.rr.com and cpe-203-0-113-17.san.res.rr.com: they
 # differ only in the first label, and both first labels have digits in them.
 # Requiring digits keeps named hosts out, so bob.users.example.net and
-# troll.users.example.net are not treated as neighbors.
+# troll.users.example.net are not treated as neighbors. IRCCloud's
+# id-NNN.ilkley.irccloud.com looks like a pool, but NNN is the account, so
+# two of them are two people.
 sub same_pool {
     my ($a, $b) = @_;
+    return 0 if Profiler::Host::kind($a) eq 'irccloud';
     my ($first_a, $rest_a) = $a =~ /^([^.]+)\.(.+\..+)$/ or return 0;
     my ($first_b, $rest_b) = $b =~ /^([^.]+)\.(.+\..+)$/ or return 0;
     return $rest_a eq $rest_b && $first_a =~ /\d/ && $first_b =~ /\d/ ? 1 : 0;

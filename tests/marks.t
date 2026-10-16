@@ -38,12 +38,14 @@ subtest 'how much a record of kicks and bans counts' => sub {
     my $kick = sub { { kind => 'kick', time => $NOW - $_[0] * $DAY, by => 'op', channel => '#chan', reason => 'r' } };
     my $ban = sub { { kind => 'ban', time => $NOW - $_[0] * $DAY, by => 'op', channel => '#chan', mask => '*!*@x' } };
     is(Profiler::Marks::weight([], $NOW), 0, 'nothing');
-    is(Profiler::Marks::weight([ $ban->(1000) ], $NOW), 1, 'a ban never fades');
+    is(Profiler::Marks::weight([ $ban->(0) ], $NOW), 1, 'a ban');
+    ok(abs(Profiler::Marks::weight([ $ban->(90) ], $NOW) - 0.5) < 1e-9, 'fades with the half-life');
     is(Profiler::Marks::weight([ $kick->(0) ], $NOW), 0.5, 'a kick is half a ban');
-    ok(abs(Profiler::Marks::weight([ $kick->(90) ], $NOW) - 0.25) < 1e-9, 'and fades with the half-life');
-    ok(Profiler::Marks::counts([ $ban->(1000) ], $NOW), 'any ban counts');
-    ok(Profiler::Marks::counts([ $kick->(30) ], $NOW), 'so does a recent kick');
-    ok(!Profiler::Marks::counts([ $kick->(400) ], $NOW), 'but not one long ago');
+    ok(abs(Profiler::Marks::weight([ $kick->(90) ], $NOW) - 0.25) < 1e-9, 'and fades the same way');
+    ok(Profiler::Marks::counts([ $ban->(150) ], $NOW), 'a ban counts for two half-lives');
+    ok(!Profiler::Marks::counts([ $ban->(200) ], $NOW), 'but not after');
+    ok(Profiler::Marks::counts([ $kick->(30) ], $NOW), 'a kick counts for one');
+    ok(!Profiler::Marks::counts([ $kick->(100) ], $NOW), 'but not after');
 };
 
 subtest 'summary' => sub {

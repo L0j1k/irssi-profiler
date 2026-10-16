@@ -346,6 +346,8 @@ subtest 'hosts in the same dynamic ISP pool are near matches' => sub {
 
     ok(Profiler::Score::same_pool('d203-0-113-220.bchsia.telus.net', 'd203-0-113-9.bchsia.telus.net'), 'telus');
     ok(!Profiler::Score::same_pool('bob.users.example.net', 'troll.users.example.net'), 'named vhosts are not a pool');
+    ok(!Profiler::Score::same_pool('id-525946.ilkley.irccloud.com', 'id-100001.ilkley.irccloud.com'),
+        'two IRCCloud accounts are two people');
     ok(!Profiler::Score::same_pool('a1.example', 'b2.example'), 'needs more than a bare domain');
     ok(!Profiler::Score::same_pool('cpe-1.example.net', 'cpe-1.example.net.evil'), 'rest must match exactly');
 };
