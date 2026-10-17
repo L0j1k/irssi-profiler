@@ -248,6 +248,14 @@ subtest 'an established custom or irccloud host is solid' => sub {
     is($r->{verdict}, 'consistent', 'and the same account');
     ok(judge($history->(%craig), { %craig, ident => 'uid100002' })->{parts}{ident} < 0, 'another account is not');
 
+    # Everyone on an IRCCloud server shares its host and addresses.
+    my %shared = (host => 'hampstead.irccloud.com', ip => '192.0.2.10', ident => 'uid100003');
+    my $host = sub { Profiler::Score::similarity('host', $_[0], \%shared) };
+    is($host->({ %shared, ident => 'uid100002' }), 0, 'two accounts on one IRCCloud server are two people');
+    is($host->({ %shared, host => 'id-100002.ilkley.irccloud.com' }), 0, 'and so are two id- hosts');
+    is($host->({ %shared, host => 'id-100003.ilkley.irccloud.com' }), 1, 'one account on two servers is one');
+    is($host->({ %shared, ident => '~bob' }), 0, 'a server host with no account says nothing');
+
     $r = judge($history->(%gus), { %gus, ident => 'lol' });
     isnt($r->{verdict}, 'consistent', 'someone else on a shared box is not');
 
@@ -346,8 +354,6 @@ subtest 'hosts in the same dynamic ISP pool are near matches' => sub {
 
     ok(Profiler::Score::same_pool('d203-0-113-220.bchsia.telus.net', 'd203-0-113-9.bchsia.telus.net'), 'telus');
     ok(!Profiler::Score::same_pool('bob.users.example.net', 'troll.users.example.net'), 'named vhosts are not a pool');
-    ok(!Profiler::Score::same_pool('id-525946.ilkley.irccloud.com', 'id-100001.ilkley.irccloud.com'),
-        'two IRCCloud accounts are two people');
     ok(!Profiler::Score::same_pool('a1.example', 'b2.example'), 'needs more than a bare domain');
     ok(!Profiler::Score::same_pool('cpe-1.example.net', 'cpe-1.example.net.evil'), 'rest must match exactly');
 };

@@ -84,7 +84,6 @@ Each attribute of a join scores from -1 to +1 against that history:
   match. So does one from the same dynamic ISP pool, meaning host names that
   differ only in a first label with digits in it
   (`cpe-198-51-100-202.san.res.rr.com` vs `cpe-203-0-113-17.san.res.rr.com`).
-  IRCCloud's `id-NNN` names aren't a pool, since the number is the account.
   So does any other generated name from the same ISP
   (`56.sub-198-51-100.myvzw.com` vs `226.sub-203-0-113.myvzw.com`), since
   mobile and residential ISPs hand out addresses from all over. Bare
@@ -112,7 +111,9 @@ person whichever IRCCloud server they come through. When the host is just
 `<server>.irccloud.com`, the account comes from the `uidNNN` or `sidNNN`
 ident, which IRCCloud sets and users can't. `uid` is the free tier and
 `sid` a subscription, so `uid100001` and `sid100001` count as the same
-ident. A private address
+ident. The account is all that counts for an IRCCloud host: everyone on
+a server shares its name and addresses, so two accounts on
+`hampstead.irccloud.com` are two people. A private address
 like `192.168.0.1` (10/8, 172.16/12, 192.168/16, 127/8, IPv6 fc00::/7,
 fe80::/10, ::1) is a spoof: nobody can really connect from one, so a
 server admin gave it to them.
