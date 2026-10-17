@@ -34,8 +34,10 @@ sub best_match {
     my $best;
     for my $key (sort keys %$all) {
         next if $key eq lc $nick;
-        my $marks = $all->{$key};
-        next unless Profiler::Marks::counts($marks, $now);
+        # Only what had happened by $now, which matters when an old join is
+        # judged again.
+        my $marks = [ grep { $_->{time} <= $now } @{ $all->{$key} } ];
+        next unless @$marks && Profiler::Marks::counts($marks, $now);
         next if defined $known_since && min(map { $_->{time} } @$marks) > $known_since;
         next unless any { looks_like($_, $obs) } @$marks;
         my $profile = $store->profile($network, $key);

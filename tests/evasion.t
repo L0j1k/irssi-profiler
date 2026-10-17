@@ -51,6 +51,11 @@ subtest 'a kick long ago no longer counts' => sub {
     is(search(store_with(kicked_days_ago => 400), { %troll, nick => 'n3wguy' }), undef, 'not found');
 };
 
+subtest 'a kick after the join is not part of the record yet' => sub {
+    is(search(store_with(kicked_days_ago => -1), { %troll, nick => 'n3wguy' }), undef,
+        'not found, as when judging an old join again');
+};
+
 # The host isn't judged on a proxy, so the ident is all that's left.
 my %creep = (nick => 'creep2', ident => 'creep', host => '50-1-2-3.ip.example.net', ip => '50.1.2.3', proxy => 'example',
     channel => '#chan');
