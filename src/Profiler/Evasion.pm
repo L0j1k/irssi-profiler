@@ -41,8 +41,11 @@ sub best_match {
         next if defined $known_since && min(map { $_->{time} } @$marks) > $known_since;
         next unless any { looks_like($_, $obs) } @$marks;
         my $profile = $store->profile($network, $key);
-        my $r = Profiler::Score::judge(person($profile, $marks), $obs, $now);
-        next unless $r->{match} >= $Profiler::Score::CONSISTENT_AT && enough_evidence($r);
+        my $person = person($profile, $marks);
+        # Channel and server are shared by everybody here, so they're left
+        # out rather than let them pad the match.
+        my $r = Profiler::Score::judge($person, { %$obs, channel => undef, server => undef }, $now);
+        next unless $r->{match} >= $Profiler::Score::CONSISTENT_AT && enough_evidence($r, $person, $obs);
         next if $best && $best->{result}{match} >= $r->{match};
         $best = { nick => $profile ? $profile->{nick} : $key, marks => $marks, result => $r };
     }
@@ -51,9 +54,17 @@ sub best_match {
 
 # A host that matches, or two of ident, realname and client. An ident on its
 # own is too little, and that's all a join from a proxy has left to judge,
-# since the host isn't. Channel and server are shared by everybody here.
+# since the host isn't.
+#
+# A different ident rules them out unless they came from the very same host
+# or IRCCloud account. A troll who's been banned a lot has used so many
+# addresses that plenty of strangers on the same ISPs come close to one.
 sub enough_evidence {
-    my ($r) = @_;
+    my ($r, $person, $obs) = @_;
+    if (($r->{parts}{ident} // 0) < 0) {
+        return 0 unless ($r->{parts}{host} // 0) > 0;
+        return any { Profiler::Score::similarity('host', $_, $obs) == 1 } @{ $person->{sightings} };
+    }
     return 1 if ($r->{parts}{host} // 0) > 0;
     return (grep { ($r->{parts}{$_} // 0) > 0 } qw(ident realname version)) >= 2;
 }

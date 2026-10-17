@@ -273,7 +273,11 @@ nick.
   kicked after a join or two, so the match alone decides: at least 0.25, as
   for a consistent verdict, from a host that matches or two of ident,
   realname and client. An ident alone isn't enough, and on a proxy the
-  host isn't judged, so a proxy join needs two of the others. A nick
+  host isn't judged, so a proxy join needs two of the others. Channel and
+  server are left out, since everybody here shares them. A different
+  ident rules someone out unless they came from the very same host or
+  IRCCloud account: a troll who's been banned a lot has used enough
+  addresses that strangers on the same ISPs come close. A nick
   that's CONFIDENT on its own history is only an evader of a kick or ban
   from before we first saw it: a regular who later gets banned under
   another nick isn't evading with the one they already had. That gives a

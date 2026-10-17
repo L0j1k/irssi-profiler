@@ -138,7 +138,9 @@ judge_as() {
 }
 tmux send-keys -t "$session" "/set profiler_verbose on" Enter
 tmux send-keys -t "$session" "/script exec $(judge_as smokeregular) for 1 .. 4" Enter
-tmux send-keys -t "$session" '/script exec package SmokeChannel; sub nicks { ({ nick => "smokeold", host => "~o\@old.example" }) } package main; Irssi::Script::profiler::on_ban_new(bless({ name => "#chan", server => bless({ tag => "efnet" }, "SmokeServer") }, "SmokeChannel"), { ban => "*!*\@old.example", setby => "smokeop!o\@op.example", time => time + 1 })' Enter
+# The ban has to come after the regular's first join and before the next.
+sleep 2
+tmux send-keys -t "$session" '/script exec package SmokeChannel; sub nicks { ({ nick => "smokeold", host => "~o\@old.example" }) } package main; Irssi::Script::profiler::on_ban_new(bless({ name => "#chan", server => bless({ tag => "efnet" }, "SmokeServer") }, "SmokeChannel"), { ban => "*!*\@old.example", setby => "smokeop!o\@op.example", time => time - 1 })' Enter
 tmux send-keys -t "$session" "/script exec $(judge_as smokeregular); Irssi::Script::profiler::info('smoke after regular')" Enter
 wait_for 'smoke after regular' || fail "the regular's joins were not judged"
 before="$(tmux capture-pane -p -t "$session" | grep -B4 'smoke after regular')"

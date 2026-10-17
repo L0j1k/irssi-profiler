@@ -51,6 +51,27 @@ subtest 'a kick long ago no longer counts' => sub {
     is(search(store_with(kicked_days_ago => 400), { %troll, nick => 'n3wguy' }), undef, 'not found');
 };
 
+subtest 'the channel is everybody here, so it says nothing' => sub {
+    my $m = search(store_with(), { %troll, nick => 'n3wguy', host => 'cpe-1-2-9-9.res.example.net' });
+    ok(!exists $m->{result}{parts}{channel}, 'not judged');
+};
+
+subtest 'a different ident rules them out unless the host is the very same' => sub {
+    my $store = store_with();
+    # A troll who changes idents all the time barely notices one more.
+    my %shifty = (nick => 'shifty', host => 'cpe-7-7-7-7.res.example.com', channel => '#chan');
+    $store->record('efnet', { %shifty, ident => "~s$_" }, $NOW - $_ * $DAY, 'consistent') for 2 .. 11;
+    $store->record_kick('efnet', { %shifty, ident => '~s2', by => 'op', reason => 'shamed' }, $NOW - $DAY);
+    is(search($store, { %shifty, nick => 'stranger', ident => '~other', host => 'cpe-7-7-9-9.res.example.com' }), undef,
+        'a neighbor on the same ISP is not them');
+
+    my %shell = (nick => 'shelltroll', ident => '~one', host => 'shell.example.org', realname => 'xx', channel => '#chan');
+    $store->record('efnet', { %shell }, $NOW - $_ * $DAY, 'consistent') for 2 .. 5;
+    $store->record_kick('efnet', { %shell, by => 'op', reason => 'shamed' }, $NOW - $DAY);
+    my $m = search($store, { %shell, nick => 'shell2', ident => '~two' });
+    is($m && $m->{nick}, 'shelltroll', 'the same host and realname still are');
+};
+
 subtest 'a kick after the join is not part of the record yet' => sub {
     is(search(store_with(kicked_days_ago => -1), { %troll, nick => 'n3wguy' }), undef,
         'not found, as when judging an old join again');
