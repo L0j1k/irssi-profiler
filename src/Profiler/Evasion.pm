@@ -36,7 +36,7 @@ sub best_match {
         next if $key eq lc $nick;
         # Only what had happened by $now, which matters when an old join is
         # judged again.
-        my $marks = [ grep { $_->{time} <= $now } @{ $all->{$key} } ];
+        my $marks = [ grep { $_->{time} <= $now } @{ Profiler::Marks::in_channel($all->{$key}, $key, $obs->{channel}) } ];
         next unless @$marks && Profiler::Marks::counts($marks, $now);
         next if defined $known_since && min(map { $_->{time} } @$marks) > $known_since;
         next unless any { looks_like($_, $obs) } @$marks;

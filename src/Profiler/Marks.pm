@@ -48,6 +48,14 @@ sub banned {
     return @who > $BAN_MAX_NICKS ? () : @who;
 }
 
+# The kicks and bans that say something about $nick joining $channel: the
+# ones from that channel, since a ban in #efnet says nothing about #chan, and
+# not the ones they set on themselves.
+sub in_channel {
+    my ($marks, $nick, $channel) = @_;
+    return [ grep { $_->{channel} eq lc $channel && lc($_->{by} // '') ne lc $nick } @$marks ];
+}
+
 sub weight {
     my ($marks, $now) = @_;
     return sum0(map {

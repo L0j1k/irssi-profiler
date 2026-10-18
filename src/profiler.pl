@@ -373,7 +373,8 @@ sub judge {
         my $profile = $store->profile($job->{tag}, $job->{nick});
         $count = $profile ? $profile->{total} : 0;
         $r = Profiler::Score::judge($profile, $obs, $now);
-        my $own = $store->all_marks($job->{tag})->{ lc $job->{nick} } // [];
+        my $own = Profiler::Marks::in_channel($store->all_marks($job->{tag})->{ lc $job->{nick} } // [],
+            $job->{nick}, $job->{channel});
         @marks = @$own if Profiler::Marks::counts($own, $now);
         my $confident = $r->{verdict} eq 'consistent' && !Profiler::Rules::below_minimum($r, $min);
         $evasion = Profiler::Evasion::best_match($store, $job->{tag}, $job->{nick}, $obs, $now,

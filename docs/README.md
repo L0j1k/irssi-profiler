@@ -260,11 +260,12 @@ nick.
 - **How much it counts.** A ban counts 1 and a kick 0.5, and both fade on
   `profiler_half_life_days`. Bans fade too since bots kick whoever an op
   bans. A record counts from 0.25: a ban within the last two half-lives,
-  or a kick within the last one.
+  or a kick within the last one. Only kicks and bans from the channel being
+  joined count, and not ones someone set on themselves.
 - **On the nick's own line.** A nick whose record counts always gets its
   line, ending with something like `banned 1x, kicked 2x, last 2026-09-02
-  by alice (shamed)`. `/profiler show <nick>` lists the record and who
-  each one hit.
+  by alice (shamed)`. `/profiler show <nick>` lists the whole record,
+  every channel included, and who each one hit.
 - **EVADER.** Every join is compared with the people whose record counts,
   under any other nick. Ones sharing the ident or a related host (same
   address, subnet, ISP pool or ISP, or a custom name) with a kick or ban

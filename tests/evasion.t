@@ -72,6 +72,15 @@ subtest 'a different ident rules them out unless the host is the very same' => s
     is($m && $m->{nick}, 'shelltroll', 'the same host and realname still are');
 };
 
+subtest 'only kicks from the channel joined count, and not ones they did themselves' => sub {
+    my $store = store_with(kicked_days_ago => 400);
+    $store->record_kick('efnet', { %troll, channel => '#elsewhere', by => 'op', reason => 'r' }, $NOW - $DAY);
+    my %n3wguy = (%troll, nick => 'n3wguy', host => 'cpe-1-2-9-9.res.example.net');
+    is(search($store, \%n3wguy), undef, 'a kick in another channel');
+    $store->record_kick('efnet', { %troll, by => 'trollguy', reason => 'r' }, $NOW - $DAY);
+    is(search($store, \%n3wguy), undef, 'a kick they did themselves');
+};
+
 subtest 'a kick after the join is not part of the record yet' => sub {
     is(search(store_with(kicked_days_ago => -1), { %troll, nick => 'n3wguy' }), undef,
         'not found, as when judging an old join again');

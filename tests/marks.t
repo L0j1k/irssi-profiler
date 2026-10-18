@@ -48,6 +48,16 @@ subtest 'how much a record of kicks and bans counts' => sub {
     ok(!Profiler::Marks::counts([ $kick->(100) ], $NOW), 'but not after');
 };
 
+subtest 'the kicks and bans that say something about a join' => sub {
+    my @marks = (
+        { kind => 'kick', time => $NOW, by => 'op', channel => '#chan' },
+        { kind => 'ban', time => $NOW, by => 'netbot', channel => '#efnet' },
+        { kind => 'kick', time => $NOW, by => 'Bob', channel => '#chan' },
+    );
+    is_deeply(Profiler::Marks::in_channel(\@marks, 'bob', '#CHAN'), [ $marks[0] ],
+        "only the channel joined, and not the ones they set on themselves");
+};
+
 subtest 'summary' => sub {
     my $t = $NOW - 10 * $DAY;
     my @marks = (
