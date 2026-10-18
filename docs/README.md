@@ -19,7 +19,10 @@ Rules live in `~/.irssi/scripts/profiler.rules`. See
 editing.
 
 Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
-`/profiler suspects`, `/profiler accept <nick>`, `/profiler reject <nick>`.
+`/profiler nicks <nick>`, `/profiler suspects`, `/profiler accept <nick>`,
+`/profiler reject <nick>`. `/profiler -h` says what each does. `/profiler
+nicks` lists everything behind "changes nicks often, also ... and 8 more",
+with when they first and last switched.
 
 ## Starting from your logs
 

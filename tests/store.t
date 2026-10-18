@@ -180,6 +180,10 @@ subtest 'nick changes link two nicks, one hop only' => sub {
     is_deeply([ $store->linked('efnet', 'cybbob') ], ['bob'], 'not through bob to robert');
     is_deeply([ $store->linked('efnet', 'nobody') ], [], 'no links');
     is_deeply([ $store->linked('other', 'bob') ], [], 'unknown network');
+    is_deeply([ $store->links('efnet', 'bob') ], [
+        { nick => 'robert', first_seen => 300, last_seen => 300 },
+        { nick => 'cybbob', first_seen => 100, last_seen => 200 },
+    ], 'with when they were first and last seen switching');
 
     $store->flush;
     is_deeply([ reopened($dir)->linked('efnet', 'robert') ], ['bob'], 'stored');

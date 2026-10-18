@@ -391,9 +391,17 @@ sub marked {
 # The nicks this one has been linked to directly, most recently used first.
 sub linked {
     my ($self, $network, $nick) = @_;
+    return map { $_->{nick} } $self->links($network, $nick);
+}
+
+# The same, each as { nick, first_seen, last_seen }: when someone first and
+# last switched between the two.
+sub links {
+    my ($self, $network, $nick) = @_;
     my $dbh = $self->db($network) or return ();
-    return @{ $dbh->selectcol_arrayref('SELECT b, last_seen FROM nick_links WHERE a = ?
-        UNION ALL SELECT a, last_seen FROM nick_links WHERE b = ? ORDER BY 2 DESC, 1', undef, lc $nick, lc $nick) };
+    return @{ $dbh->selectall_arrayref('SELECT b AS nick, first_seen, last_seen FROM nick_links WHERE a = ?
+        UNION ALL SELECT a, first_seen, last_seen FROM nick_links WHERE b = ? ORDER BY 3 DESC, 1',
+        { Slice => {} }, lc $nick, lc $nick) };
 }
 
 # Recorded nicks with the same skeleton as this one, other than itself, sorted.

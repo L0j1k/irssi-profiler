@@ -106,6 +106,10 @@ wait_for 'smoke after oops' || fail "oops lines not printed"
 
 tmux send-keys -t "$session" "/profiler list" Enter
 wait_for 'efnet #chan 0.5' || fail "/profiler list did not show the watch"
+tmux send-keys -t "$session" "/profiler -h" Enter
+wait_for 'nicks <nick>' || fail "/profiler -h did not show usage"
+tmux send-keys -t "$session" '/script exec my $s = Profiler::Store->new(Irssi::Script::profiler::irssi_path("profiler_data_dir", "profiler-data")); $s->link_nicks("efnet", "smokea", "smokeb", 1700000000); $s->flush; Irssi::Script::profiler::cmd_profiler("nicks smokea", bless({ tag => "efnet" }, "SmokeServer"))' Enter
+wait_for 'smokeb +first 2023-11-1[45], last 2023-11-1[45]' || fail "/profiler nicks did not list the nicks with dates"
 
 # A WHOIS whose end never comes (say the server went away mid-reply) must
 # not leave the nick waiting for good. The fake server swallows everything.

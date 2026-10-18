@@ -518,6 +518,16 @@ sub cmd_profiler {
                 sort { $counts{$b} <=> $counts{$a} } keys %counts));
         }
     }
+    elsif ($subcmd eq 'nicks' && length $arg) {
+        return info("/profiler nicks needs an active server") unless $server;
+        my @links = eval { $store->links($server->{tag}, $arg) };
+        return info($@) if $@;
+        return info("$arg on $server->{tag} has never switched nicks") unless @links;
+        info("$arg on $server->{tag} has switched with " . @links . " nick(s), latest first:");
+        info(sprintf('  %-16s first %s, last %s', $_->{nick},
+            POSIX::strftime('%Y-%m-%d', localtime $_->{first_seen}), POSIX::strftime('%Y-%m-%d', localtime $_->{last_seen})))
+            for @links;
+    }
     elsif ($subcmd eq 'suspects') {
         return info("/profiler suspects needs an active server") unless $server;
         my @found = eval { $store->suspects($server->{tag}) };
@@ -542,8 +552,23 @@ sub cmd_profiler {
             : "$n suspect sighting(s) of $arg stay quarantined");
     }
     else {
-        info("usage: /profiler [list|reload|show <nick>|suspects|accept <nick>|reject <nick>]");
+        usage();
     }
+}
+
+# For /profiler -h, and anything it doesn't understand.
+sub usage {
+    info($_) for split /\n/, <<'END';
+usage: /profiler [-h] [command]
+  list             what's watched, and lookups queued or waiting (the default)
+  reload           read the rules file again
+  show <nick>      a nick's history, and its kicks and bans in every channel
+  nicks <nick>     every nick it has switched with, with when
+  suspects         quarantined sightings waiting for a look
+  accept <nick>    let a nick's quarantined sightings count
+  reject <nick>    file a nick's quarantined sightings away
+  -h               this
+END
 }
 
 Irssi::settings_add_str('profiler', 'profiler_rules_file', '');
