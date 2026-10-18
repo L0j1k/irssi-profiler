@@ -106,4 +106,13 @@ subtest 'an impostor kicked on a nick is told apart from the nick' => sub {
     is(search($store, { %bob, nick => 'bob_away' }), undef, 'but bob himself on another nick is not');
 };
 
+subtest 'a kick is moot once they came back on the nick it hit' => sub {
+    my $store = store_with();
+    $store->record('efnet', { %troll }, $NOW - $DAY / 2, 'consistent');
+    is(search($store, { %troll, nick => 'n3wguy', host => 'cpe-1-2-9-9.res.example.net' }), undef, 'not found');
+    $store->record('efnet', { %bob }, $NOW - $DAY / 2, 'consistent');
+    my $m = search($store, { %creep, realname => 'creepy' });
+    is($m && $m->{nick}, 'bob', 'but bob coming back says nothing about the creep who wore his nick');
+};
+
 done_testing;

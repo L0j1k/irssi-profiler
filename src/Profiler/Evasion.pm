@@ -41,6 +41,8 @@ sub best_match {
         next if defined $known_since && min(map { $_->{time} } @$marks) > $known_since;
         next unless any { looks_like($_, $obs) } @$marks;
         my $profile = $store->profile($network, $key);
+        $marks = [ grep { !came_back($_, $profile, $now) } @$marks ];
+        next unless @$marks && Profiler::Marks::counts($marks, $now);
         my $person = person($profile, $marks);
         # Channel and server are shared by everybody here, so they're left
         # out rather than let them pad the match.
@@ -67,6 +69,17 @@ sub enough_evidence {
     }
     return 1 if ($r->{parts}{host} // 0) > 0;
     return (grep { ($r->{parts}{$_} // 0) > 0 } qw(ident realname version)) >= 2;
+}
+
+# Did whoever a mark hit come back on that nick afterwards, by $now? Then the
+# ban was lifted or never stuck, and coming back on another nick isn't
+# evading it. In #CHAN regulars get kicked and banned all the time and are
+# back a minute later. Only a sighting that looks like the one who was hit
+# counts, so bob coming back doesn't clear a troll who wore his nick.
+sub came_back {
+    my ($mark, $profile, $now) = @_;
+    return any { $_->{time} > $mark->{time} && $_->{time} <= $now && looks_like($mark, $_) }
+        @{ $profile ? $profile->{sightings} : [] };
 }
 
 # A kick or ban as a sighting: who it hit, where and when. undef when we

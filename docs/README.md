@@ -277,7 +277,9 @@ nick.
   server are left out, since everybody here shares them. A different
   ident rules someone out unless they came from the very same host or
   IRCCloud account: a troll who's been banned a lot has used enough
-  addresses that strangers on the same ISPs come close. A nick
+  addresses that strangers on the same ISPs come close. A kick or ban
+  stops counting once whoever it hit came back on that nick, since the
+  ban was lifted or never stuck. A nick
   that's CONFIDENT on its own history is only an evader of a kick or ban
   from before we first saw it: a regular who later gets banned under
   another nick isn't evading with the one they already had. That gives a
