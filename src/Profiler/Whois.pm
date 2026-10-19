@@ -49,9 +49,28 @@ sub parse {
 # change of provider: the registry's organisation, or its AS when there's
 # none, lowercased with spacing evened out. undef when the record has
 # neither. The netname isn't used, since one provider has many.
+#
+# For an address a regional registry handed out, ARIN's answer can name the
+# registry as the organisation, like RIPE NCC for M247's addresses. That says
+# nothing about who has it, so we go by the AS then.
+my %REGISTRY = map { $_ => 1 } (
+    'ripe network coordination centre',
+    'asia pacific network information centre',
+    'african network information center',
+    'latin american and caribbean ip address regional registry',
+    'american registry for internet numbers',
+);
+
 sub provider {
     my ($rec) = @_;
-    my $name = $rec->{org} // $rec->{origin};
+    my $org = normalized($rec->{org});
+    $org = undef if defined $org && $REGISTRY{$org};
+    return $org // normalized($rec->{origin});
+}
+
+# A name lowercased with spacing evened out, or undef when it's blank.
+sub normalized {
+    my ($name) = @_;
     return undef unless defined $name && $name =~ /\S/;
     $name = lc $name;
     $name =~ s/\s+/ /g;

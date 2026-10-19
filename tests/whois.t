@@ -42,6 +42,9 @@ subtest 'who an address belongs to' => sub {
     is(Profiler::Whois::provider(Profiler::Whois::parse(fixture('comcast'))), 'comcast cable communications, llc',
         'the organisation, lowercased');
     is(Profiler::Whois::provider({ origin => 'AS60729' }), 'as60729', 'or the AS without one');
+    is(Profiler::Whois::provider({ org => 'RIPE Network Coordination Centre', netname => 'M247-LTD-Prague',
+        origin => 'AS9009' }), 'as9009', 'or when the organisation is only the registry that handed it out');
+    is(Profiler::Whois::provider({ org => 'Asia Pacific Network Information Centre' }), undef, 'APNIC too');
     is(Profiler::Whois::provider({ org => "  Telia   Company AB " }), 'telia company ab', 'spacing evened out');
     is(Profiler::Whois::provider({ netname => 'X' }), undef, 'nothing to go on');
     is(Profiler::Whois::provider({ error => 'no answer' }), undef, 'or a failed lookup');

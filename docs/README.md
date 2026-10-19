@@ -97,7 +97,8 @@ Each attribute of a join scores from -1 to +1 against that history:
   mobile and residential ISPs hand out addresses from all over. Bare
   addresses (IPv4 or IPv6 with no name) are compared by who whois says
   they belong to, the organisation or else the AS, which live sightings
-  keep as their provider. So does a reply from the same client at another version (`irssi
+  keep as their provider. When the organisation is only the regional
+  registry that handed the address out, like RIPE NCC, the AS is used. So does a reply from the same client at another version (`irssi
   v1.4.5` vs `v1.4.6`).
 - **Contradicts:** `-stability`. Stability is
   how dominant the usual value has been. Breaking an ident used every time
