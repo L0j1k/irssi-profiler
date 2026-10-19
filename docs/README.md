@@ -163,8 +163,10 @@ nicks are left out of that comparison, since their confidence keeps their
 trust under 0.5 anyway. The verdict is:
 
 - **unknown:** confidence under 0.5, about three fresh sightings. If what
-  little history there is disagrees (match below 0), the join is a
-  WARNING and quarantined like a suspect. That's how someone looks who
+  little history there is disagrees (match below 0) on ident, realname or
+  client, the join is a WARNING and quarantined like a suspect. A new host
+  alone isn't enough, or a newcomer on a dynamic IP would never build up
+  a history. That's how someone looks who
   picked up a nick nobody has used for years, since old sightings count
   for almost nothing.
 - **suspect:** match below 0, with at least one of host, ident, realname or

@@ -216,7 +216,7 @@ sub profile {
 }
 
 sub record {
-    my ($self, $network, $obs, $now, $verdict, $match) = @_;
+    my ($self, $network, $obs, $now, $verdict, $match, $parts) = @_;
     my $dbh = $self->db($network, 1);
     my $p = $self->profile($network, $obs->{nick});
     if (!$p) {
@@ -228,7 +228,7 @@ sub record {
     $sighting{channel} = lc $sighting{channel} if defined $sighting{channel};
     $sighting{time} = $now;
     $sighting{verdict} = $verdict;
-    $sighting{quarantined} = Profiler::Score::held($verdict, $match) ? 1 : 0;
+    $sighting{quarantined} = Profiler::Score::held($verdict, $match, $parts) ? 1 : 0;
     $sighting{reviewed} = 0;
 
     my @columns = ('time', 'verdict', 'quarantined', @FIELDS);

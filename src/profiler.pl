@@ -408,7 +408,7 @@ sub judge {
             if $r->{verdict} eq 'unknown' || $r->{verdict} eq 'suspect';
         @other_nicks = Profiler::Variants::changes_nicks_often($store, $job->{tag}, $job->{nick}, $job->{was} // ());
         unless ($job->{check}) {
-            $store->record($job->{tag}, $obs, $now, @$r{qw(verdict match)});
+            $store->record($job->{tag}, $obs, $now, @$r{qw(verdict match parts)});
             @promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
                 Irssi::settings_get_int('profiler_promote_after_sightings'),
                 Irssi::settings_get_int('profiler_promote_after_days'));

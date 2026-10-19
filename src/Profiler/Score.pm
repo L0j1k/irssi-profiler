@@ -131,13 +131,16 @@ sub age_weight {
     return 0.5 ** ($age / $HALF_LIFE);
 }
 
-# Whether a join judged $verdict, with $match when known, is quarantined.
-# Suspects and new hosts are. So is an unknown join that disagrees with
-# what's left of an old history, since otherwise whoever picks up a nick
-# that's been idle for years looks like its owner from their second join.
+# Whether a join judged $verdict, with judge's $match and $parts when known,
+# is quarantined. Suspects and new hosts are. So is an unknown join that
+# disagrees with what's left of an old history on ident, realname or client,
+# since otherwise whoever picks up a nick that's been idle for years looks
+# like its owner from their second join. A new host alone isn't enough,
+# because a newcomer on a dynamic IP would never get a history.
 sub held {
-    my ($verdict, $match) = @_;
-    return $verdict eq 'suspect' || $verdict eq 'new host' || $verdict eq 'unknown' && ($match // 0) < 0;
+    my ($verdict, $match, $parts) = @_;
+    return 1 if $verdict eq 'suspect' || $verdict eq 'new host';
+    return $verdict eq 'unknown' && ($match // 0) < 0 && any { ($parts->{$_} // 0) < 0 } @IDENTITY_ATTRS;
 }
 
 # Sightings that count: everything except what was quarantined as suspect.

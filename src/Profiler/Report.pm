@@ -59,7 +59,7 @@ sub verdict_line {
     # Too little recent history to judge, but what there is disagrees, which
     # is how someone picking up a long idle nick looks. It's held like a
     # suspect (see Profiler::Score::held).
-    if ($r->{verdict} eq 'unknown' && Profiler::Score::held($r->{verdict}, $r->{match})) {
+    if ($r->{verdict} eq 'unknown' && Profiler::Score::held(@$r{qw(verdict match parts)})) {
         return ('WARNING', "$who doesn't match what little is left of $job->{nick}'s history; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");
     }

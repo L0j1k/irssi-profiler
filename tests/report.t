@@ -45,6 +45,8 @@ subtest 'an unknown join that disagrees with old history says it is held' => sub
 
     is_deeply(line({ verdict => 'unknown', trust => 0, match => 0, confidence => 0, parts => {} }), [],
         'nothing against them is quiet');
+    is_deeply(line({ verdict => 'unknown', trust => 0, match => -0.5, confidence => 0,
+        parts => { host => -1, ident => 1 } }), [], 'and so is only a new host, like a dynamic IP');
 };
 
 subtest 'a likely proxy is one warning line, whatever the verdict' => sub {
