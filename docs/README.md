@@ -328,7 +328,10 @@ reverse DNS) always gets an UNKNOWN line saying so, since that's how a lot
 of trolls on proxies turn up. A join from a likely proxy the nick hasn't been seen on
 before always gets one line. It says WARNING in place of any word but
 SUSPECT, and still gives the verdict. A proxy they're always on is probably
-their own server, so it's treated like any other host. To change a colour, override the format in your theme, for
+their own server, so it's treated like any other host. A new address from a
+provider they've used before, like another exit of their VPN, isn't a
+warning either, but the line still says it's a likely proxy, adding "a
+provider they've used before". To change a colour, override the format in your theme, for
 example:
 
     "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n {channick $0}"; };

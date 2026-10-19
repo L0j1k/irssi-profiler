@@ -110,6 +110,17 @@ subtest 'whether the nick has used this host before' => sub {
     ok(!judge($held, { %bob, host => 'held.example.org' })->{host_seen}, 'one only seen in quarantine is new');
 };
 
+subtest 'whether the nick has used this provider before' => sub {
+    my $vpn = profile_of(3);
+    $_->{provider} = 'm247 ltd' for @{ $vpn->{sightings} };
+    ok(judge($vpn, { %bob, host => '192.0.2.7', provider => 'm247 ltd' })->{provider_seen}, 'another address of theirs');
+    ok(!judge($vpn, { %bob, host => '192.0.2.7', provider => 'linode' })->{provider_seen}, 'another provider');
+    ok(!judge(profile_of(3), { %bob, host => '192.0.2.7' })->{provider_seen}, 'no provider to go on');
+    push @{ $vpn->{sightings} }, { %bob, provider => 'linode', time => $NOW, quarantined => 1 };
+    ok(!judge($vpn, { %bob, host => '192.0.2.7', provider => 'linode' })->{provider_seen},
+        'one only seen in quarantine is new');
+};
+
 subtest 'another address from the same ISP is a partial match, a new ISP is suspect' => sub {
     # Verizon hands out addresses from all over, so hank is never on the
     # same /24 twice.

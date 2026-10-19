@@ -125,6 +125,10 @@ subtest 'a likely proxy they always use is not a warning' => sub {
     my ($word, $text) = @{ line({ %consistent, host_seen => 1 }, hostinfo => \%linode, verbose => 1) };
     is($word, 'CONFIDENT', 'verbose, it gets its own word');
     like($text, qr/on a likely VPN/, 'and still says it is a proxy');
+
+    ($word, $text) = @{ line({ %consistent, provider_seen => 1 }, hostinfo => \%linode, verbose => 1) };
+    is($word, 'CONFIDENT', 'nor is another address from a provider they use');
+    like($text, qr/matched 'linode', a provider they've used before\)/, $text);
 };
 
 subtest 'nicks they change between' => sub {

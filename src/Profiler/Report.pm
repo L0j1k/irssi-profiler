@@ -36,7 +36,8 @@ sub verdict_line {
     my $proxy = '';
     if ($hostinfo->{proxy}) {
         my $owner = $hostinfo->{org} // $hostinfo->{netname} // 'unknown owner';
-        $proxy = " on a likely VPN, proxy or hosting address ($hostinfo->{ip}, $owner, matched '$hostinfo->{proxy}')";
+        my $used = $r->{provider_seen} ? ", a provider they've used before" : '';
+        $proxy = " on a likely VPN, proxy or hosting address ($hostinfo->{ip}, $owner, matched '$hostinfo->{proxy}'$used)";
     }
     my $who = "$job->{nick} ($was$job->{ident}\@$job->{host}, client: $job->{version})$proxy";
     my $seen = $count ? "seen $count time(s) before" : 'never seen before';
@@ -65,8 +66,9 @@ sub verdict_line {
     }
     # A likely proxy the nick hasn't been on before is worth a warning even
     # from someone we know, so it takes over whichever quieter word the join
-    # would have had. One they're always on is probably their own server.
-    my $word = $proxy && !$r->{host_seen} ? 'WARNING' : undef;
+    # would have had. One they're always on is probably their own server,
+    # and another address from a VPN provider they use is just a new exit.
+    my $word = $proxy && !$r->{host_seen} && !$r->{provider_seen} ? 'WARNING' : undef;
     # Same person by everything but the host, most likely. A quiet note
     # rather than a warning, so SUSPECT keeps meaning something.
     if ($r->{verdict} eq 'new host') {

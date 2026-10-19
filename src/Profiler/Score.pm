@@ -248,6 +248,7 @@ sub weighted_match {
 #   verdict     unknown, suspect, mixed or consistent
 #   parts       each attribute's score, for explaining the verdict
 #   host_seen   1 if the history has this exact host, even on a proxy
+#   provider_seen  1 if the history has the address's provider (from whois)
 #
 # Call this before recording the observation, or it gets compared with itself.
 sub judge {
@@ -285,6 +286,8 @@ sub judge {
         verdict    => $verdict,
         parts      => \%parts,
         host_seen  => (any { $_->[0]{host} eq $obs->{host} } @weighted) ? 1 : 0,
+        provider_seen => defined $obs->{provider}
+            && (any { ($_->[0]{provider} // '') eq $obs->{provider} } @weighted) ? 1 : 0,
     );
     my $identity_contradicted = grep { ($parts{$_} // 0) < 0 } @IDENTITY_ATTRS;
     # A different ident, realname or client means it may well be someone
