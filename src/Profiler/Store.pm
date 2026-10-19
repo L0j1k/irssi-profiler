@@ -300,12 +300,12 @@ sub set_reviewed {
 # If the nick's quarantined sightings look like they moved rather than like
 # an impostor (see Profiler::Score::promotable), let them count. They are
 # marked promoted, so a later look at the data can tell them apart from
-# hand-accepted ones. Returns how many were promoted.
+# hand-accepted ones. Returns the promoted sightings, oldest first.
 sub promote_if_moved {
     my ($self, $network, $nick, $now, $min_count, $min_days) = @_;
-    my $p = $self->profile($network, $nick) or return 0;
+    my $p = $self->profile($network, $nick) or return ();
     my @moved = Profiler::Score::promotable($p, $min_count, $min_days);
-    return 0 unless @moved;
+    return () unless @moved;
 
     my $sth = $self->db($network)->prepare_cached(
         'UPDATE sightings SET quarantined = 0, reviewed = 1, promoted = ? WHERE id = ?');
@@ -315,7 +315,7 @@ sub promote_if_moved {
         $s->{promoted} = $now;
         $sth->execute($now, $s->{id});
     }
-    return scalar @moved;
+    return @moved;
 }
 
 # Someone went from one nick to the other with /nick, so both are the same

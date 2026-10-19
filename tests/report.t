@@ -91,6 +91,17 @@ subtest 'someone who looks like a kicked or banned person' => sub {
         . 'host, ident match; match +0.80 against them', $text);
 };
 
+subtest 'a move says which held joins now count' => sub {
+    my $day = 86400;
+    my @moved = map { { time => 1_700_000_000 + $_ * $day } } 0, 1, 66;
+    my ($first, $last) = map { POSIX::strftime('%Y-%m-%d', localtime $_->{time}) } @moved[0, -1];
+    my ($word, $text) = Profiler::Report::moved_line(\%job, \@moved);
+    is($word, 'MOVED', 'word');
+    is($text, "bob looks like they have a new usual host: 3 held join(s) from $first to $last now count toward "
+        . 'their history. /profiler show bob to check', 'text');
+    like((Profiler::Report::moved_line(\%job, [ $moved[0] ]))[1], qr/1 held join\(s\) on $first now/, 'one day');
+};
+
 subtest 'a suspect from a new ISP says which' => sub {
     my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', new_isp => { isp => 'telia.it', usual => 'myvzw.com' } }) };
     is($word, 'SUSPECT', 'a suspect');

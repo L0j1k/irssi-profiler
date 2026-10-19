@@ -369,7 +369,7 @@ sub judge {
 
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
-    my ($r, $count, $promoted, $variant, $evasion, @other_nicks, @marks);
+    my ($r, $count, $variant, $evasion, @other_nicks, @marks, @promoted);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
         $count = $profile ? $profile->{total} : 0;
@@ -386,7 +386,7 @@ sub judge {
             if $r->{verdict} eq 'unknown' || $r->{verdict} eq 'suspect';
         @other_nicks = Profiler::Variants::changes_nicks_often($store, $job->{tag}, $job->{nick}, $job->{was} // ());
         $store->record($job->{tag}, $obs, $now, $r->{verdict});
-        $promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
+        @promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
             Irssi::settings_get_int('profiler_promote_after_sightings'),
             Irssi::settings_get_int('profiler_promote_after_days'));
         $store->flush;
@@ -417,9 +417,9 @@ sub judge {
         $say->($evader_text, $evader_word);
     }
 
-    if ($promoted) {
-        $say->("$job->{nick} looks like they have a new usual host: $promoted quarantined sighting(s) like this one "
-            . "now count toward their history. /profiler show $job->{nick} to check", 'MOVED');
+    if (@promoted) {
+        my ($moved_word, $moved_text) = Profiler::Report::moved_line($job, \@promoted);
+        $say->($moved_text, $moved_word);
     }
 }
 

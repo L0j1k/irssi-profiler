@@ -75,7 +75,7 @@ sub rescore {
         # Reviewed without a promotion means someone ran /profiler accept or
         # reject on it.
         $store->set_reviewed($network, $s, $row->{quarantined}) if $row->{reviewed} && !$row->{promoted};
-        $stats{promoted} += $store->promote_if_moved($network, $obs{nick}, $row->{time}, $promote_count, $promote_days);
+        $stats{promoted} += () = $store->promote_if_moved($network, $obs{nick}, $row->{time}, $promote_count, $promote_days);
         $stats{changed}{ $row->{verdict} }{ $s->{verdict} }++;
         if (++$stats{sightings} % 100_000 == 0) {
             $store->flush;

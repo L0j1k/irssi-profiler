@@ -3,6 +3,8 @@ package Profiler::Report;
 use strict;
 use warnings;
 
+use POSIX ();
+
 use Profiler::Host;
 use Profiler::Marks;
 use Profiler::Rules;
@@ -115,6 +117,17 @@ sub evader_line {
     my $matches = what_matches($r, qw(host ident realname version)) // 'nothing contradicts';
     return ('EVADER', sprintf('%s (%s@%s) looks like %s (%s): %s; match %+.2f against them', $job->{nick},
         $job->{ident}, $job->{host}, $evasion->{nick}, Profiler::Marks::summary($evasion->{marks}), $matches, $r->{match}));
+}
+
+# The note for when a nick's held joins were let into its history (see
+# Profiler::Store::promote_if_moved). They can be months old, so it says when
+# they were from.
+sub moved_line {
+    my ($job, $moved) = @_;
+    my ($first, $last) = map { POSIX::strftime('%Y-%m-%d', localtime $_->{time}) } @$moved[0, -1];
+    my $when = $first eq $last ? "on $first" : "from $first to $last";
+    return ('MOVED', "$job->{nick} looks like they have a new usual host: " . @$moved . " held join(s) $when "
+        . "now count toward their history. /profiler show $job->{nick} to check");
 }
 
 # "ident, client match" for the attributes that scored in favour, or undef

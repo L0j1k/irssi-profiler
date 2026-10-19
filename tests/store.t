@@ -114,7 +114,7 @@ subtest 'someone who moved stops being held within about a week' => sub {
         my $now = $t + $d * 86400;
         my $r = Profiler::Score::judge($store->profile('n', 'bob'), $obs, $now);
         $store->record('n', $obs, $now, $r->{verdict});
-        if (my $n = $store->promote_if_moved('n', 'bob', $now, 5, 7)) { push @promoted, $n }
+        if (my @moved = $store->promote_if_moved('n', 'bob', $now, 5, 7)) { push @promoted, scalar @moved }
         $verdicts{ $r->{verdict} }++ if $d >= 100;
     }
     # A new ISP is suspect, since it's what a residential proxy looks like,
@@ -132,7 +132,7 @@ subtest 'someone who moved stops being held within about a week' => sub {
     $store->flush;
     my @stored = grep { $_->{promoted} } @{ reopened($dir)->profile('n', 'bob')->{sightings} };
     is(scalar @stored, $held, 'promotions are stored');
-    is($store->promote_if_moved('n', 'nobody', $t, 5, 7), 0, 'unknown nick');
+    is_deeply([ $store->promote_if_moved('n', 'nobody', $t, 5, 7) ], [], 'unknown nick');
 };
 
 subtest 'scoring sees the latest sightings, the database keeps everything' => sub {
