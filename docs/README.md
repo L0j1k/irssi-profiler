@@ -162,7 +162,11 @@ sightings, 0.77 at ten, 0.87 at twenty. Unknown
 nicks are left out of that comparison, since their confidence keeps their
 trust under 0.5 anyway. The verdict is:
 
-- **unknown:** confidence under 0.5, about three fresh sightings.
+- **unknown:** confidence under 0.5, about three fresh sightings. If what
+  little history there is disagrees (match below 0), the join is a
+  WARNING and quarantined like a suspect. That's how someone looks who
+  picked up a nick nobody has used for years, since old sightings count
+  for almost nothing.
 - **suspect:** match below 0, with at least one of host, ident, realname or
   client contradicting. If only channel or server disagree, it's mixed
   instead. Suspects are always warned about, whatever the rules say. The

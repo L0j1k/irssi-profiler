@@ -8,6 +8,7 @@ use POSIX ();
 use Profiler::Host;
 use Profiler::Marks;
 use Profiler::Rules;
+use Profiler::Score ();
 use Profiler::Store ();
 
 # How many of the nicks someone changes between are named before "and N more".
@@ -53,6 +54,13 @@ sub verdict_line {
         my $when = $job->{netsplit} ? ' during a netsplit rejoin' : '';
         my $isp = $r->{new_isp} ? ": from an ISP they've never used, $r->{new_isp}{isp}, usually $r->{new_isp}{usual}" : '';
         return ('SUSPECT', "$who doesn't match the history of $job->{nick}$when$isp; $score, $seen$why. "
+            . "Quarantined; /profiler accept $job->{nick} if it's really them");
+    }
+    # Too little recent history to judge, but what there is disagrees, which
+    # is how someone picking up a long idle nick looks. It's held like a
+    # suspect (see Profiler::Score::held).
+    if ($r->{verdict} eq 'unknown' && Profiler::Score::held($r->{verdict}, $r->{match})) {
+        return ('WARNING', "$who doesn't match what little is left of $job->{nick}'s history; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");
     }
     # A likely proxy the nick hasn't been on before is worth a warning even

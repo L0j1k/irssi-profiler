@@ -257,7 +257,7 @@ sub replay {
 sub observe {
     my ($store, $network, $obs, $time) = @_;
     my $r = Profiler::Score::judge($store->profile($network, $obs->{nick}), $obs, $time);
-    return $store->record($network, $obs, $time, $r->{verdict})->{sightings}[-1];
+    return $store->record($network, $obs, $time, @$r{qw(verdict match)})->{sightings}[-1];
 }
 
 1;

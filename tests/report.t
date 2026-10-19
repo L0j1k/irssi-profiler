@@ -37,6 +37,16 @@ subtest 'under the minimum, thin history is unproven and anything against them i
     like($text, qr/\[channel=-1\.00 host=-0\.80 ident=\+0\.90\]/, 'and the parts say what');
 };
 
+subtest 'an unknown join that disagrees with old history says it is held' => sub {
+    my ($word, $text) = @{ line({ verdict => 'unknown', trust => 0, match => -0.83, confidence => 0,
+        parts => { host => -1, ident => -1 } }) };
+    is($word, 'WARNING', 'a warning');
+    like($text, qr/doesn't match what little is left of bob's history; trust \+0\.00 .* Quarantined; \/profiler accept bob/, $text);
+
+    is_deeply(line({ verdict => 'unknown', trust => 0, match => 0, confidence => 0, parts => {} }), [],
+        'nothing against them is quiet');
+};
+
 subtest 'a likely proxy is one warning line, whatever the verdict' => sub {
     my $proxy = qr/on a likely VPN, proxy or hosting address \(192\.0\.2\.95, Linode, matched 'linode'\)/;
 

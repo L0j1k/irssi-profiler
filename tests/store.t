@@ -100,6 +100,11 @@ subtest 'suspect sightings are quarantined until reviewed' => sub {
 
     $store->record('efnet', { %obs, host => 'elsewhere.example.org' }, 4000, 'new host');
     ok($store->profile('efnet', 'bob')->{sightings}[-1]{quarantined}, 'a new host is quarantined too');
+
+    $store->record('efnet', { %obs, ident => 'stranger' }, 5000, 'unknown', -0.83);
+    ok($store->profile('efnet', 'bob')->{sightings}[-1]{quarantined}, 'so is an unknown join that disagrees');
+    $store->record('efnet', \%obs, 6000, 'unknown', 0.5);
+    ok(!$store->profile('efnet', 'bob')->{sightings}[-1]{quarantined}, 'but not one that agrees');
 };
 
 subtest 'someone who moved stops being held within about a week' => sub {

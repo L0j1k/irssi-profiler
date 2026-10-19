@@ -14,7 +14,8 @@ use Profiler::Score;
 # up and kept in memory after that, with every change written through to the
 # database.
 #
-# A sighting judged "suspect" or "new host" is quarantined: kept for the
+# A sighting judged "suspect" or "new host" is quarantined (see
+# Profiler::Score::held for the rest): kept for the
 # record but left out of the history its nick is judged against, so an
 # impostor can't train the profile toward themselves. /profiler accept or
 # reject marks it reviewed.
@@ -215,7 +216,7 @@ sub profile {
 }
 
 sub record {
-    my ($self, $network, $obs, $now, $verdict) = @_;
+    my ($self, $network, $obs, $now, $verdict, $match) = @_;
     my $dbh = $self->db($network, 1);
     my $p = $self->profile($network, $obs->{nick});
     if (!$p) {
@@ -227,7 +228,7 @@ sub record {
     $sighting{channel} = lc $sighting{channel} if defined $sighting{channel};
     $sighting{time} = $now;
     $sighting{verdict} = $verdict;
-    $sighting{quarantined} = $verdict eq 'suspect' || $verdict eq 'new host' ? 1 : 0;
+    $sighting{quarantined} = Profiler::Score::held($verdict, $match) ? 1 : 0;
     $sighting{reviewed} = 0;
 
     my @columns = ('time', 'verdict', 'quarantined', @FIELDS);
