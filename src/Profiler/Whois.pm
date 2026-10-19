@@ -60,9 +60,13 @@ sub provider {
 }
 
 # The first keyword found as a whole word or phrase in the record, or undef.
+# Also undef when the record has any of the @$not_proxy phrases.
 sub proxy_reason {
-    my ($rec, $keywords) = @_;
+    my ($rec, $keywords, $not_proxy) = @_;
     my $text = lc($rec->{text} // '');
+    for my $phrase (@{ $not_proxy // [] }) {
+        return undef if $text =~ /\b\Q$phrase\E\b/;
+    }
     for my $kw (@$keywords) {
         return $kw if $text =~ /\b\Q$kw\E\b/;
     }
@@ -80,9 +84,9 @@ sub resolve {
 # Resolve a host and run the system whois on its address. This blocks for as
 # long as DNS and the registry take, so the irssi side runs it in a child
 # process. Returns a hash with ip, netname, org, origin and proxy (the matched
-# keyword), or with error set when something went wrong.
+# keyword, see proxy_reason), or with error set when something went wrong.
 sub lookup {
-    my ($host, $keywords, $timeout) = @_;
+    my ($host, $keywords, $timeout, $not_proxy) = @_;
 
     my $ip = resolve($host);
     return { ip => undef, error => "cannot resolve $host" } unless defined $ip;
@@ -109,7 +113,7 @@ sub lookup {
         netname => $rec->{netname},
         org     => $rec->{org},
         origin  => $rec->{origin},
-        proxy   => proxy_reason($rec, $keywords),
+        proxy   => proxy_reason($rec, $keywords, $not_proxy),
     };
 }
 

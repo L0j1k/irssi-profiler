@@ -331,7 +331,9 @@ both, as in `profiler_unknown_variant_consistent`.
 
 - Proxy detection is keyword matching on registry records. It misses VPNs that
   rent space from ordinary ISPs and can flag small businesses with "hosting"
-  in their name. Add `proxy <keyword>` lines to tune it.
+  in their name, or a carrier on a cloud provider's addresses, like Boost
+  Mobile on Amazon's. Add `proxy <keyword>` lines to catch more, and
+  `notproxy <phrase>` lines to clear records with that phrase.
 - Cloaked hosts (`user/bob`) can't be resolved, so they get no subnet or
   proxy check.
 - Profiles are keyed by nick. A variant nick gets its own profile from

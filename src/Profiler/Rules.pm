@@ -7,17 +7,20 @@ use warnings;
 #
 #     <network> <channel[,channel...]> <min_trust>
 #     proxy <keyword or phrase>
+#     notproxy <phrase>
 #
 # A watch line asks for a warning when someone joins one of those channels with
 # trust under min_trust (0 to 1). "*" in the network or channel field means
 # "any". A proxy line adds a word to look for in whois records on top of the
-# built-in list in Profiler::Whois. Lines starting with "#" are comments.
+# built-in list in Profiler::Whois. A notproxy line clears any record that has
+# the phrase, like a mobile carrier that runs on a cloud provider's addresses.
+# Lines starting with "#" are comments.
 
 # Returns (\%rules, \@errors). Bad lines are skipped and described in @errors so
 # one typo does not throw away the rest of the file.
 sub parse {
     my (@lines) = @_;
-    my %rules = (watches => [], proxy_keywords => []);
+    my %rules = (watches => [], proxy_keywords => [], not_proxy => []);
     my @errors;
 
     my $n = 0;
@@ -25,12 +28,13 @@ sub parse {
         $n++;
         next if $line =~ /^\s*(#|$)/;
 
-        if ($line =~ /^\s*proxy\b\s*(.*?)\s*$/i) {
-            if (length $1) {
-                push @{ $rules{proxy_keywords} }, lc $1;
+        if ($line =~ /^\s*(proxy|notproxy)\b\s*(.*?)\s*$/i) {
+            my ($kind, $phrase) = (lc $1, $2);
+            if (length $phrase) {
+                push @{ $rules{ $kind eq 'proxy' ? 'proxy_keywords' : 'not_proxy' } }, lc $phrase;
             }
             else {
-                push @errors, "line $n: proxy needs a keyword";
+                push @errors, "line $n: $kind needs a " . ($kind eq 'proxy' ? 'keyword' : 'phrase');
             }
             next;
         }

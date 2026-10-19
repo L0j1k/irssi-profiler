@@ -53,6 +53,15 @@ subtest 'keywords match whole words only' => sub {
     is(Profiler::Whois::proxy_reason($rec, ['acme storage']), 'acme storage', 'multi-word keyword');
 };
 
+subtest 'a notproxy phrase overrides the keywords' => sub {
+    # Boost Mobile's addresses are registered to Amazon, since it runs on AWS.
+    my $rec = { text => "NetName: AMAZON-DISH\nOrganization: Boost Mobile" };
+    is(Profiler::Whois::proxy_reason($rec, \@keywords), 'amazon', 'flagged on its own');
+    is(Profiler::Whois::proxy_reason($rec, \@keywords, ['boost mobile']), undef, 'not with notproxy boost mobile');
+    is(Profiler::Whois::proxy_reason($rec, \@keywords, ['boost']), undef, 'whole words, like keywords');
+    is(Profiler::Whois::proxy_reason($rec, \@keywords, ['oost']), 'amazon', 'and not inside them');
+};
+
 subtest 'lookup on a host that does not resolve' => sub {
     my $res = Profiler::Whois::lookup('user/bob', \@keywords, 10);
     is($res->{ip}, undef, 'no ip');

@@ -147,7 +147,8 @@ sub load_rules {
     info("$path $_") for @$errors;
     $rules = $loaded;
     info("loaded " . scalar(@{ $rules->{watches} }) . " watch rule(s) and "
-        . scalar(@{ $rules->{proxy_keywords} }) . " extra proxy keyword(s) from $path");
+        . scalar(@{ $rules->{proxy_keywords} }) . " extra proxy keyword(s) and "
+        . scalar(@{ $rules->{not_proxy} }) . " notproxy phrase(s) from $path");
 }
 
 sub open_store {
@@ -338,7 +339,7 @@ sub look_up_host {
 
     if ($pid == 0) {
         close $reader;
-        my $res = Profiler::Whois::lookup($job->{host}, $keywords, $timeout);
+        my $res = Profiler::Whois::lookup($job->{host}, $keywords, $timeout, $rules->{not_proxy});
         print $writer encode_json($res);
         close $writer;
         POSIX::_exit(0);

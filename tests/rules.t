@@ -46,6 +46,16 @@ subtest 'proxy keyword lines' => sub {
     like($errors->[0], qr/^line 2: /, 'error names the line');
 };
 
+subtest 'notproxy lines' => sub {
+    my ($rules, $errors) = Profiler::Rules::parse(
+        "notproxy Boost Mobile\n",
+        "notproxy\n",
+    );
+    is_deeply($rules->{not_proxy}, ['boost mobile'], 'phrase is the rest of the line, lowercased');
+    is_deeply($rules->{proxy_keywords}, [], 'and not a proxy keyword');
+    like($errors->[0], qr/^line 2: notproxy needs/, 'empty notproxy line is an error');
+};
+
 subtest 'min_trust_for' => sub {
     my ($rules) = Profiler::Rules::parse(
         "efnet #chan,#other 0.6\n",
