@@ -111,6 +111,14 @@ wait_for 'nicks <nick>' || fail "/profiler -h did not show usage"
 tmux send-keys -t "$session" '/script exec my $s = Profiler::Store->new(Irssi::Script::profiler::irssi_path("profiler_data_dir", "profiler-data")); $s->link_nicks("efnet", "smokea", "smokeb", 1700000000); $s->flush; Irssi::Script::profiler::cmd_profiler("nicks smokea", bless({ tag => "efnet" }, "SmokeServer"))' Enter
 wait_for 'smokeb +first 2023-11-1[45], last 2023-11-1[45]' || fail "/profiler nicks did not list the nicks with dates"
 
+# /profiler judge looks at someone already in a channel. It always gets a
+# line, even one that a join would keep quiet, and records nothing.
+tmux send-keys -t "$session" '/script exec package SmokeServer; sub channels { () } package main; Irssi::Script::profiler::cmd_profiler("judge smokegone", bless({ tag => "efnet" }, "SmokeServer"))' Enter
+wait_for "smokegone isn't in any channel on efnet" || fail "/profiler judge did not say the nick isn't here"
+tmux send-keys -t "$session" '/script exec Irssi::Script::profiler::judge({ tag => "efnet", channel => "#chan", nick => "smokecheck", ident => "~c", host => "check.example", version => "smoke", check => 1 }, {}); Irssi::Script::profiler::cmd_profiler("show smokecheck", bless({ tag => "efnet" }, "SmokeServer"))' Enter
+wait_for 'UNKNOWN smokecheck' || fail "a check of someone present printed no line"
+wait_for 'no profile for smokecheck' || fail "a check of someone present was recorded"
+
 # A WHOIS whose end never comes (say the server went away mid-reply) must
 # not leave the nick waiting for good. The fake server swallows everything.
 tmux send-keys -t "$session" "/set profiler_version_timeout 1" Enter

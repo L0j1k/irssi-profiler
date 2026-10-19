@@ -19,8 +19,13 @@ Rules live in `~/.irssi/scripts/profiler.rules`. See
 editing.
 
 Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
-`/profiler nicks <nick>`, `/profiler suspects`, `/profiler accept <nick>`,
-`/profiler reject <nick>`. `/profiler -h` says what each does. `/profiler
+`/profiler nicks <nick>`, `/profiler judge <nick>`, `/profiler suspects`,
+`/profiler accept <nick>`, `/profiler reject <nick>`. `/profiler -h` says
+what each does. `/profiler judge` is for someone whose join has scrolled
+away: it looks them up as if they'd just joined the channel in the active
+window (or any channel they're in) and always prints the line, with the
+same coloured word, but records nothing. It sends them a CTCP VERSION, as a
+join does. `/profiler
 nicks` lists everything behind "changes nicks often, also ... and 8 more",
 with when they first and last switched.
 

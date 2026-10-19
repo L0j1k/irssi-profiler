@@ -177,6 +177,25 @@ sub recent_key {
     return lc("$tag/$channel/$nick");
 }
 
+# A job for /profiler judge, about someone already in a channel, or undef
+# when they aren't in one. The active window's channel comes first, so the
+# kicks, bans and min_trust are that channel's.
+sub present_job {
+    my ($server, $nick) = @_;
+    my $active = Irssi::active_win()->{active};
+    my @channels = $server->channels;
+    unshift @channels, $active
+        if $active && $active->{type} eq 'CHANNEL' && $active->{server} && $active->{server}{tag} eq $server->{tag};
+    for my $channel (@channels) {
+        my $found = $channel->nick_find($nick) or next;
+        my ($ident, $host) = split /@/, $found->{host} // '', 2;
+        next unless defined $host;
+        return { tag => $server->{tag}, channel => $channel->{name}, nick => $found->{nick},
+            ident => $ident, host => $host, check => 1 };
+    }
+    return undef;
+}
+
 sub on_join {
     my ($server, $channel, $nick, $address) = @_;
     return if lc $nick eq lc $server->{nick};
@@ -361,11 +380,14 @@ sub look_up_host {
     }, undef);
 }
 
+# Judges a join and records it. A job with check set comes from
+# /profiler judge, about someone already here: it always gets a line and
+# leaves the store as it was.
 sub judge {
     my ($job, $hostinfo) = @_;
     my $obs = { %$job, ip => $hostinfo->{ip}, proxy => $hostinfo->{proxy}, provider => Profiler::Whois::provider($hostinfo) };
     my $now = time;
-    $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now;
+    $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now unless $job->{check};
 
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
@@ -385,11 +407,13 @@ sub judge {
         $variant = Profiler::Variants::best_match($store, $job->{tag}, $job->{nick}, $obs, $now)
             if $r->{verdict} eq 'unknown' || $r->{verdict} eq 'suspect';
         @other_nicks = Profiler::Variants::changes_nicks_often($store, $job->{tag}, $job->{nick}, $job->{was} // ());
-        $store->record($job->{tag}, $obs, $now, $r->{verdict});
-        @promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
-            Irssi::settings_get_int('profiler_promote_after_sightings'),
-            Irssi::settings_get_int('profiler_promote_after_days'));
-        $store->flush;
+        unless ($job->{check}) {
+            $store->record($job->{tag}, $obs, $now, $r->{verdict});
+            @promoted = $store->promote_if_moved($job->{tag}, $job->{nick}, $now,
+                Irssi::settings_get_int('profiler_promote_after_sightings'),
+                Irssi::settings_get_int('profiler_promote_after_days'));
+            $store->flush;
+        }
         1;
     } or return info($@);
 
@@ -399,7 +423,7 @@ sub judge {
         count       => $count,
         other_nicks => \@other_nicks,
         min         => $min,
-        verbose     => Irssi::settings_get_bool('profiler_verbose'),
+        verbose     => $job->{check} || Irssi::settings_get_bool('profiler_verbose'),
         hostinfo    => $hostinfo,
         marks       => \@marks,
     });
@@ -529,6 +553,11 @@ sub cmd_profiler {
             POSIX::strftime('%Y-%m-%d', localtime $_->{first_seen}), POSIX::strftime('%Y-%m-%d', localtime $_->{last_seen})))
             for @links;
     }
+    elsif ($subcmd eq 'judge' && length $arg) {
+        return info("/profiler judge needs an active server") unless $server;
+        my $job = present_job($server, $arg) or return info("$arg isn't in any channel on $server->{tag}");
+        send_whois($server, $job);
+    }
     elsif ($subcmd eq 'suspects') {
         return info("/profiler suspects needs an active server") unless $server;
         my @found = eval { $store->suspects($server->{tag}) };
@@ -565,6 +594,8 @@ usage: /profiler [-h] [command]
   reload           read the rules file again
   show <nick>      a nick's history, and its kicks and bans in every channel
   nicks <nick>     every nick it has switched with, with when
+  judge <nick>     judge someone already here as if they just joined,
+                   without recording it (they get a CTCP VERSION, as on a join)
   suspects         quarantined sightings waiting for a look
   accept <nick>    let a nick's quarantined sightings count
   reject <nick>    file a nick's quarantined sightings away
