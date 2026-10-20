@@ -388,7 +388,8 @@ sub matches_apart_from_host {
 # host contradicts the old history and gets quarantined, and since quarantined
 # sightings never join the history, they'd stay suspect for months. So we
 # look for the shape of a move: the newest unreviewed quarantined sightings
-# agree with each other on the host, and there are at least $min_count of them
+# agree with each other on the host, or on an ident the nick never had before,
+# and there are at least $min_count of them
 # spread over at least $min_days.
 #
 # If the old habit has stopped since the first of them, that's a move and
@@ -407,10 +408,17 @@ sub promotable {
     my @held = grep { $_->{quarantined} && !$_->{reviewed} } @sightings;
 
     my $latest = $held[-1];
-    my @agreeing = grep { similarity('host', $_, $latest) > 0 } @held;
+    my @accepted = grep { !$_->{quarantined} } @sightings;
+    # Someone on a new dynamic address every join never agrees on the host,
+    # so an ident the nick never had counts too. One it already had doesn't,
+    # since that's just as easy for a troll to copy.
+    my $new_ident = defined $latest->{ident}
+        && !grep { defined $_->{ident} && similarity('ident', $_, $latest) > 0 } @accepted;
+    my @agreeing = grep {
+        similarity('host', $_, $latest) > 0 || $new_ident && defined $_->{ident} && similarity('ident', $_, $latest) > 0
+    } @held;
     return () if @agreeing < $min_count;
     return () if $latest->{time} - $agreeing[0]{time} < $min_days * 86400;
-    my @accepted = grep { !$_->{quarantined} } @sightings;
     if (grep { $_->{time} > $agreeing[0]{time} } @accepted) {
         return () if grep { !matches_apart_from_host($_, \@accepted) } @agreeing;
     }

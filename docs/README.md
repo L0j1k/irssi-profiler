@@ -207,7 +207,8 @@ trust under 0.5 anyway. The verdict is:
 
 Someone who really moved would otherwise stay suspect for months, since
 their new host never enters the history. So when a nick's quarantined
-sightings agree with each other, number at least
+sightings agree with each other on the host, or on an ident the nick never
+had (someone new on a dynamic address), number at least
 `profiler_promote_after_sightings` (5) over at least
 `profiler_promote_after_days` (7), they're promoted: they count, and a line
 says the nick has a new usual host. If the old host has stopped turning up,

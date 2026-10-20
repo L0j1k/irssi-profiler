@@ -412,6 +412,14 @@ subtest 'promotable: a move, or a second home that matches everything but the ho
         for @{ $scattered->{sightings} };
     is($n->($scattered), 0, 'not if the quarantined sightings disagree with each other');
 
+    # Someone new on the nick, with an ident it's never had, from a new
+    # dynamic address every time.
+    my $newcomer = $moved->(20, 22, 24, 26, 28);
+    my @hosts = qw(alpha.example bravo.example delta.example echo.example golf.example);
+    $_->{quarantined} and $_->{ident} = '~charlie' and $_->{host} = shift @hosts and delete $_->{ip}
+        for @{ $newcomer->{sightings} };
+    is($n->($newcomer), 5, 'unless they agree on an ident the nick never had');
+
     my $reviewed = $moved->(20, 22, 24, 26, 28);
     $_->{quarantined} and $_->{reviewed} = 1 for @{ $reviewed->{sightings} };
     is($n->($reviewed), 0, 'rejected sightings stay rejected');
