@@ -450,4 +450,49 @@ subtest 'same_subnet' => sub {
     ok(!Profiler::Score::same_subnet('not.an.ip', '10.10.10.2'), 'not an address');
 };
 
+subtest 'ports_similarity' => sub {
+    is(Profiler::Score::ports_similarity('22,6697', '22,6697'), 1, 'same set');
+    is(Profiler::Score::ports_similarity('', ''), 1, 'both nothing open');
+    is(Profiler::Score::ports_similarity('22,80,443,6697', '22,6697'), 0.5, 'two of four shared');
+    is(Profiler::Score::ports_similarity('22,6697', '1080,3128'), 0, 'nothing in common');
+    is(Profiler::Score::ports_similarity('', '22'), 0, 'one silent, one not');
+};
+
+subtest 'a matching port fingerprint counts in favour, a different one against' => sub {
+    my $p = profile_of(10, with => { ports => '22,6697' });
+    my $same = judge($p, { %bob, ports => '22,6697' });
+    ok($same->{parts}{ports} > 0, "same ports score for them ($same->{parts}{ports})");
+
+    my $different = judge($p, { %bob, ports => '1080,3128,4145' });
+    ok($different->{parts}{ports} < 0, "different ports score against ($different->{parts}{ports})");
+    # but not enough on their own to call the usual person an impostor
+    isnt($different->{verdict}, 'suspect', 'a port mismatch alone is not a suspect');
+};
+
+subtest 'a port mismatch alone cannot make a suspect' => sub {
+    # Everything that says who bob is still matches; only the open ports moved.
+    my $p = profile_of(4, with => { ports => '22,6697' });
+    my $r = judge($p, { %bob, ports => '1080,3128,4145' });
+    ok($r->{parts}{ports} < 0, 'ports contradict');
+    ok(!Profiler::Score::identity_contradicted($r->{parts}), 'but nothing about their identity does');
+    isnt($r->{verdict}, 'suspect', "so the verdict stays off suspect ($r->{verdict})");
+};
+
+subtest 'an open proxy port is suspect on its own' => sub {
+    my $known = judge(profile_of(10, with => { ports => '22,6697' }), { %bob, ports => '22,9050', open_proxy => 9050 });
+    is($known->{verdict}, 'suspect', 'even a regular coming through Tor is suspect');
+    is($known->{open_proxy}, 9050, 'the matched port is reported');
+
+    my $stranger = judge(undef, { %bob, ports => '1080', open_proxy => 1080 });
+    is($stranger->{verdict}, 'suspect', 'and so is a stranger with no history');
+};
+
+subtest 'ports are not judged on a shared proxy exit' => sub {
+    # A bare address with no name of its own: on a proxy, its open ports are
+    # the exit's, shared by everyone, so they're left out of the score.
+    my $p = profile_of(10, with => { ports => '22,6697' });
+    my $r = judge($p, { %bob, host => '203.0.113.5', ip => '203.0.113.5', ports => '22,6697', proxy => 'vpn' });
+    ok(!exists $r->{parts}{ports}, 'the exit\'s ports belong to everyone, so they say nothing');
+};
+
 done_testing;

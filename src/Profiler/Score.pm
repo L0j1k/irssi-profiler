@@ -18,6 +18,12 @@ use Profiler::Version;
 # little, but a mismatch means they didn't even try. The host is hard to fake,
 # so a match is strong evidence, while a mismatch is only moderate because
 # people change ISPs and travel.
+# Open ports are where someone connects from, like the host, so they're
+# weighted below the identity attributes. The set survives a change of dynamic
+# address, which is where the host name fails, but it also overlaps with the
+# host, so it's kept light to avoid counting the same thing twice. A mismatch
+# weighs a little more than a match, since a node that suddenly exposes
+# different services is worth a second look.
 our %MATCH_WEIGHT = (
     host     => 0.40,
     ident    => 0.10,
@@ -25,6 +31,7 @@ our %MATCH_WEIGHT = (
     version  => 0.05,
     server   => 0.05,
     channel  => 0.10,
+    ports    => 0.15,
 );
 our %CONTRADICT_WEIGHT = (
     host     => 0.35,
@@ -33,6 +40,7 @@ our %CONTRADICT_WEIGHT = (
     version  => 0.15,
     server   => 0.05,
     channel  => 0.05,
+    ports    => 0.20,
 );
 
 # Familiarity is weight / (weight + K): K fresh sightings is halfway to 1.
@@ -188,7 +196,22 @@ sub similarity {
         return Profiler::Version::client($seen->{version}) eq Profiler::Version::client($obs->{version})
             ? $CLIENT_CREDIT : 0;
     }
+    return ports_similarity($seen->{ports}, $obs->{ports}) if $attr eq 'ports';
     return 0;
+}
+
+# How much two port fingerprints agree: the share of ports they have in common
+# out of all the ports either had open (a Jaccard overlap). Two hosts with
+# nothing open agree completely; a host and a brand new set of ports agree not
+# at all.
+sub ports_similarity {
+    my ($a, $b) = @_;
+    my %a = map { $_ => 1 } grep { length } split /,/, $a // '';
+    my %b = map { $_ => 1 } grep { length } split /,/, $b // '';
+    return 1 if !%a && !%b;
+    my $common = grep { $b{$_} } keys %a;
+    my $either = keys %{ { %a, %b } };
+    return $either ? $common / $either : 0;
 }
 
 # One attribute's score from -1 to 1 and how much history it had, as
@@ -221,7 +244,10 @@ sub has_value {
 sub attribute_score {
     my ($attr, $weighted, $obs) = @_;
     return unless has_value($attr, $obs);
-    return if $attr eq 'host' && $obs->{proxy} && !defined solid_key_of($obs);
+    # On a shared VPN or hosting exit the host name and the open ports both
+    # belong to the exit, not the person, so neither is judged unless they put
+    # a name of their own on the address (see similarity for host).
+    return if ($attr eq 'host' || $attr eq 'ports') && $obs->{proxy} && !defined solid_key_of($obs);
 
     my ($total, $support, %by_value) = (0, 0);
     for my $pair (@$weighted) {
@@ -327,6 +353,13 @@ sub judge {
     # well everything else was copied.
     $r{new_isp} = new_isp(\@weighted, $obs);
     $r{verdict} = 'suspect' if $r{new_isp} && $verdict ne 'unknown';
+    # An open proxy port we connected straight through (SOCKS, Tor, an HTTP
+    # proxy) is the one port signal strong enough on its own: whoever this is,
+    # they're coming through an anonymiser, so it's suspect whatever else
+    # matched, even with no history to go on. The caller sets open_proxy to the
+    # matched port (see Profiler::Probe::proxy_port_in).
+    $r{open_proxy} = $obs->{open_proxy};
+    $r{verdict} = 'suspect' if $r{open_proxy};
     return \%r;
 }
 
