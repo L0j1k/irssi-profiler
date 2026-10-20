@@ -370,6 +370,24 @@ sub finish_if_ready {
     look_up_host($_) for grep { defined $_->{host} } map { { %$_, %found } } @{ $entry->{jobs} };
 }
 
+# The probe settings, read in the parent so the child doesn't touch Irssi.
+sub probe_args {
+    return (
+        probe_ports(),
+        Irssi::settings_get_int('profiler_probe_timeout'),
+        Irssi::settings_get_int('profiler_probe_banner_wait'),
+        Irssi::settings_get_int('profiler_probe_banner_bytes'),
+    );
+}
+
+# Knock on $ip and return just the port fingerprint fields, for merging into a
+# lookup. Runs in the child, since the probe blocks.
+sub probe_result {
+    my ($ip, $ports, $connect_timeout, $banner_wait, $banner_bytes) = @_;
+    my $results = Profiler::Probe::probe($ip, $ports, $connect_timeout, $banner_wait, $banner_bytes);
+    return { ports => Profiler::Probe::signature($results), banners => Profiler::Probe::banner_text($results) };
+}
+
 sub look_up_host {
     my ($job) = @_;
     my $now = time;
@@ -377,39 +395,57 @@ sub look_up_host {
         $store->fresh_hostinfo($job->{tag}, $job->{host}, $now, Irssi::settings_get_int('profiler_hostinfo_max_age'));
     };
     return info($@) if $@;
-    return judge($job, $info) if $info;
+
+    my $probe = Irssi::settings_get_bool('profiler_probe');
+
+    if ($info) {
+        # The whois is still fresh. If probing is on and this host has never
+        # been probed, which is any host looked up before probing was on, fill
+        # in the port fingerprint without redoing the whois. Otherwise the
+        # cache is enough. An empty ports string means we probed and found
+        # nothing open, so it counts as probed.
+        return judge($job, $info) unless $probe && defined $info->{ip} && !defined $info->{ports};
+        my ($ip, @args) = ($info->{ip}, probe_args());
+        return lookup_in_child($job, $info, sub { probe_result($ip, @args) });
+    }
 
     my $keywords = proxy_keywords();
     my $timeout = Irssi::settings_get_int('profiler_lookup_timeout');
-    my $probe = Irssi::settings_get_bool('profiler_probe');
-    my $ports = probe_ports();
-    my $connect_timeout = Irssi::settings_get_int('profiler_probe_timeout');
-    my $banner_wait = Irssi::settings_get_int('profiler_probe_banner_wait');
-    my $banner_bytes = Irssi::settings_get_int('profiler_probe_banner_bytes');
+    my @args = probe_args();
+    return lookup_in_child($job, {}, sub {
+        my $res = Profiler::Whois::lookup($job->{host}, $keywords, $timeout, $rules->{not_proxy});
+        # Knock on the address whois just resolved. Even when whois itself timed
+        # out we may still have the address, so this goes by the address alone.
+        if ($probe && defined $res->{ip}) {
+            my $p = probe_result($res->{ip}, @args);
+            @$res{qw(ports banners)} = @$p{qw(ports banners)};
+        }
+        return $res;
+    });
+}
+
+# Fork a child to work out a host's info, then cache it and judge the join.
+# $compute runs in the child and returns a hashref, which is merged over $base
+# (the cached lookup when we're only filling in a probe) before it's stored and
+# judged. All the blocking work happens in the child so irssi keeps running.
+sub lookup_in_child {
+    my ($job, $base, $compute) = @_;
     my ($reader, $writer);
     if (!pipe $reader, $writer) {
         info("cannot create pipe for host lookup: $!");
-        return judge($job, {});
+        return judge($job, $base);
     }
     my $pid = fork;
     if (!defined $pid) {
         info("cannot fork for host lookup: $!");
         close $reader;
         close $writer;
-        return judge($job, {});
+        return judge($job, $base);
     }
 
     if ($pid == 0) {
         close $reader;
-        my $res = Profiler::Whois::lookup($job->{host}, $keywords, $timeout, $rules->{not_proxy});
-        # Knock on the address whois just resolved. Even when whois itself timed
-        # out we may still have the address, so this goes by the address alone.
-        if ($probe && defined $res->{ip}) {
-            my $results = Profiler::Probe::probe($res->{ip}, $ports, $connect_timeout, $banner_wait, $banner_bytes);
-            $res->{ports} = Profiler::Probe::signature($results);
-            $res->{banners} = Profiler::Probe::banner_text($results);
-        }
-        print $writer encode_json($res);
+        print $writer encode_json($compute->());
         close $writer;
         POSIX::_exit(0);
     }
@@ -424,9 +460,10 @@ sub look_up_host {
 
         my $res = eval { decode_json($json // '') } || { error => 'host lookup died without an answer' };
         info("host lookup for $job->{host}: $res->{error}") if $res->{error};
-        eval { $store->set_hostinfo($job->{tag}, $job->{host}, $res, time); $store->flush };
+        my $merged = { %$base, %$res };
+        eval { $store->set_hostinfo($job->{tag}, $job->{host}, $merged, time); $store->flush };
         info($@) if $@;
-        judge($job, $res);
+        judge($job, $merged);
     }, undef);
 }
 
