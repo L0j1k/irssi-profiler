@@ -29,7 +29,7 @@ subtest 'recording and reloading sightings' => sub {
     my $store = Profiler::Store->new($dir);
 
     is($store->profile('EFnet', 'bob'), undef, 'unknown nick');
-    $store->record('EFnet', \%obs, 1000, 'unknown');
+    $store->record('EFnet', { %obs, ports => '22,6697', banners => '22=SSH-2.0-OpenSSH_9.2' }, 1000, 'unknown');
     $store->record('EFnet', { %obs, realname => undef, server => undef }, 2000, 'consistent');
     $store->flush;
 
@@ -46,8 +46,11 @@ subtest 'recording and reloading sightings' => sub {
     is($first->{host}, 'host.example.net', 'fields kept');
     is($first->{channel}, '#chan', 'channel lowercased');
     is($first->{verdict}, 'unknown', 'verdict kept');
+    is($first->{ports}, '22,6697', 'port fingerprint kept');
+    is($first->{banners}, '22=SSH-2.0-OpenSSH_9.2', 'banners kept');
     ok(!$first->{quarantined}, 'not quarantined');
     ok(!exists $second->{realname}, 'missing values are left out');
+    ok(!exists $second->{ports}, 'a sighting with no probe has no ports');
     ok(!exists $first->{nick}, 'nick is not repeated in every sighting');
 };
 
@@ -215,11 +218,17 @@ subtest 'a database from an older profiler is refused' => sub {
 };
 
 subtest 'a database from an earlier schema is upgraded where it is' => sub {
-    # What each older schema lacked.
+    # What each older schema lacked. Schema 6 added the port fingerprint, so
+    # every older one is missing it too.
+    my @no_ports = (
+        'ALTER TABLE sightings DROP COLUMN ports', 'ALTER TABLE sightings DROP COLUMN banners',
+        'ALTER TABLE hostinfo DROP COLUMN ports', 'ALTER TABLE hostinfo DROP COLUMN banners',
+    );
     my %older = (
-        2 => ['DROP TABLE labels', 'DROP TABLE marks', 'ALTER TABLE sightings DROP COLUMN provider'],
-        3 => ['DROP TABLE labels', 'ALTER TABLE sightings DROP COLUMN provider'],
-        4 => ['DROP TABLE labels'],
+        2 => ['DROP TABLE labels', 'DROP TABLE marks', 'ALTER TABLE sightings DROP COLUMN provider', @no_ports],
+        3 => ['DROP TABLE labels', 'ALTER TABLE sightings DROP COLUMN provider', @no_ports],
+        4 => ['DROP TABLE labels', @no_ports],
+        5 => [@no_ports],
     );
     for my $version (sort keys %older) {
         my $dir = tempdir(CLEANUP => 1);
@@ -233,7 +242,7 @@ subtest 'a database from an earlier schema is upgraded where it is' => sub {
         $store = reopened($dir);
         is($store->profile('efnet', 'bob')->{total}, 1, "schema $version: sightings are still there");
         $store->record_kick('efnet', { nick => 'bob', channel => '#chan', by => 'op', reason => 'bye' }, 2000);
-        $store->record('efnet', { %obs, provider => 'example isp' }, 3000, 'consistent');
+        $store->record('efnet', { %obs, provider => 'example isp', ports => '22,6697' }, 3000, 'consistent');
         $store->set_label('efnet', 'bob', 'good', 4000);
         $store->close;
         $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
@@ -241,6 +250,8 @@ subtest 'a database from an earlier schema is upgraded where it is' => sub {
         is($dbh->selectrow_array('SELECT count(*) FROM marks'), 1, "schema $version: kicks and bans work");
         is($dbh->selectrow_array('SELECT provider FROM sightings WHERE time = 3000'), 'example isp',
             "schema $version: and so do providers");
+        is($dbh->selectrow_array('SELECT ports FROM sightings WHERE time = 3000'), '22,6697',
+            "schema $version: and the port fingerprint");
         is($dbh->selectrow_array('SELECT label FROM labels'), 'good', "schema $version: and labels");
     }
 };
@@ -311,7 +322,8 @@ subtest 'odd network names make safe file names' => sub {
 subtest 'host lookups are cached with an age' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);
-    my %info = (ip => '10.10.10.2', netname => 'NET', org => 'Org', origin => 'AS1', proxy => 'vpn', error => undef);
+    my %info = (ip => '10.10.10.2', netname => 'NET', org => 'Org', origin => 'AS1', proxy => 'vpn',
+        error => undef, ports => '22,6697', banners => '22=SSH-2.0-OpenSSH_9.2');
     $store->set_hostinfo('efnet', 'host.example.net', \%info, 1000);
     is($store->fresh_hostinfo('efnet', 'host.example.net', 1500, 600)->{ip}, '10.10.10.2', 'fresh');
     is($store->fresh_hostinfo('efnet', 'host.example.net', 1700, 600), undef, 'stale');

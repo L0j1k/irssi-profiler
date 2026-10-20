@@ -26,9 +26,9 @@ use Profiler::Score;
 
 # Observation fields kept in each sighting. Missing ones are stored as NULL
 # and left out when loaded.
-my @FIELDS = qw(host ip ident realname server version channel proxy provider);
+my @FIELDS = qw(host ip ident realname server version channel proxy provider ports banners);
 
-my @HOSTINFO_FIELDS = qw(ip netname org origin proxy error);
+my @HOSTINFO_FIELDS = qw(ip netname org origin proxy error ports banners);
 
 # How many of a nick's latest sightings a profile holds for scoring. Older
 # ones stay in the database.
@@ -78,6 +78,9 @@ my @SCHEMA = (
         version TEXT, channel TEXT, proxy TEXT,
         -- who the address belongs to, from whois (Profiler::Whois::provider)
         provider TEXT,
+        -- the open ports we knocked on (Profiler::Probe::signature), and the
+        -- banners they sent, kept for review but not scored
+        ports TEXT, banners TEXT,
         verdict     TEXT NOT NULL,
         quarantined INTEGER NOT NULL DEFAULT 0,
         reviewed    INTEGER NOT NULL DEFAULT 0,
@@ -89,7 +92,8 @@ my @SCHEMA = (
     'CREATE TABLE IF NOT EXISTS hostinfo (
         host    TEXT PRIMARY KEY,
         checked INTEGER NOT NULL,
-        ip TEXT, netname TEXT, org TEXT, origin TEXT, proxy TEXT, error TEXT
+        ip TEXT, netname TEXT, org TEXT, origin TEXT, proxy TEXT, error TEXT,
+        ports TEXT, banners TEXT
     )',
     # Every nick we've recorded, with its skeleton (see Profiler::Nick), for
     # finding variants like bob_ and B0B`.
@@ -115,11 +119,17 @@ my @SCHEMA = (
 # Stored in the database as PRAGMA user_version. Bump it whenever the schema
 # changes, and add the steps from the old version to %UPGRADE if the old
 # data still fits. A version with no steps is refused and gets re-imported.
-our $SCHEMA_VERSION = 5;
+our $SCHEMA_VERSION = 6;
 my %UPGRADE = (
     2 => \@MARKS_SCHEMA,
     3 => ['ALTER TABLE sightings ADD COLUMN provider TEXT'],
     4 => \@LABELS_SCHEMA,
+    5 => [
+        'ALTER TABLE sightings ADD COLUMN ports TEXT',
+        'ALTER TABLE sightings ADD COLUMN banners TEXT',
+        'ALTER TABLE hostinfo ADD COLUMN ports TEXT',
+        'ALTER TABLE hostinfo ADD COLUMN banners TEXT',
+    ],
 );
 
 sub new {
