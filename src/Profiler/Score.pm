@@ -207,15 +207,26 @@ sub similarity {
 # that address is still somebody's own, so those are judged.
 #
 # $weighted is the history as [sighting, age weight] pairs.
+# Whether a sighting has a value worth scoring for an attribute. A missed
+# CTCP VERSION reply is absence of a client, not a client habit: it comes
+# from a timeout or a bouncer eating the request, so it says nothing about
+# who someone is and is left out on both sides.
+sub has_value {
+    my ($attr, $s) = @_;
+    return 0 unless defined $s->{$attr};
+    return 0 if $attr eq 'version' && $s->{$attr} eq $Profiler::Version::NO_REPLY;
+    return 1;
+}
+
 sub attribute_score {
     my ($attr, $weighted, $obs) = @_;
-    return unless defined $obs->{$attr};
+    return unless has_value($attr, $obs);
     return if $attr eq 'host' && $obs->{proxy} && !defined solid_key_of($obs);
 
     my ($total, $support, %by_value) = (0, 0);
     for my $pair (@$weighted) {
         my ($seen, $w) = @$pair;
-        next unless defined $seen->{$attr};
+        next unless has_value($attr, $seen);
         $total += $w;
         $by_value{ $seen->{$attr} } += $w;
         $support += $w * similarity($attr, $seen, $obs);

@@ -325,9 +325,25 @@ subtest 'an upgraded client gets partial credit' => sub {
     ok($upgraded > 0 && $upgraded < $exact, "upgraded $upgraded, exact $exact");
 };
 
-subtest 'never answering VERSION is consistent too' => sub {
+subtest 'a missed VERSION reply is no client, not a client habit' => sub {
+    # A timeout or a bouncer that eats the request tells us nothing about who
+    # someone is, so it's never scored, on either side.
     my $silent = profile_of(5, with => { version => $Profiler::Version::NO_REPLY });
-    ok(judge($silent, { %bob, version => $Profiler::Version::NO_REPLY })->{parts}{version} > 0, 'matches');
+    ok(!exists judge($silent, { %bob, version => $Profiler::Version::NO_REPLY })->{parts}{version},
+        'silence on both sides is not judged');
+    ok(!exists judge($silent, \%bob)->{parts}{version}, 'nor a real client against a silent history');
+    ok(!exists judge(profile_of(5), { %bob, version => $Profiler::Version::NO_REPLY })->{parts}{version},
+        'nor a silent join against a real history');
+
+    # The live bug: a nick seen hundreds of times from the logs (no client)
+    # plus one missed reply, joining with a real client, must not be called a
+    # client mismatch.
+    my $p = { sightings => [ map { { host => $bob{host}, ip => $bob{ip}, ident => $bob{ident},
+        channel => '#chan', time => $NOW - $_ } } 1 .. 20 ] };
+    push @{ $p->{sightings} }, { %{ $p->{sightings}[0] }, version => $Profiler::Version::NO_REPLY };
+    my $r = judge($p, { %bob, version => 'Konversation 1.10' });
+    ok(!exists $r->{parts}{version}, 'the lone missed reply is not a client habit');
+    is($r->{verdict}, 'consistent', 'so a real client is still consistent');
 };
 
 subtest 'attributes missing on either side are skipped' => sub {
