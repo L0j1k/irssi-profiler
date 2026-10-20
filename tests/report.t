@@ -26,6 +26,17 @@ subtest 'a consistent join says nothing unless asked' => sub {
     like($text, qr/^bob \(~bob\@host\.example\.net, client: irssi v1\.4\.5\) has trust \+0\.90/, $text);
 };
 
+subtest 'someone labelled BAD always gets a line' => sub {
+    my ($word, $text) = @{ line(\%consistent, label => { label => 'bad', nick => 'bob' }) };
+    is($word, 'CONFIDENT', 'with the usual word');
+    unlike($text, qr/labelled/, "and nothing extra when it's their own nick");
+
+    ($word, $text) = @{ line(\%consistent, label => { label => 'bad', nick => 'TrollGuy' }) };
+    like($text, qr/; labelled BAD as TrollGuy$/, 'says who they were labelled as');
+
+    is_deeply(line(\%consistent, label => { label => 'good', nick => 'bob' }), [], 'GOOD stays quiet');
+};
+
 subtest 'under the minimum, thin history is unproven and anything against them is a warning' => sub {
     my ($word, $text) = @{ line({ %consistent, trust => 0.33, confidence => 0.57 }) };
     is($word, 'UNPROVEN', 'everything matches, there just is not much of it');

@@ -17,7 +17,7 @@ use Profiler::Whois;
 # only the live script saw: realname, server, version, ip and proxy, and
 # sightings from after the logs.
 #
-# Nick links, cached host lookups, kicks and bans are copied as they are. A sighting
+# Nick links, cached host lookups, kicks, bans and labels are copied as they are. A sighting
 # someone accepted or rejected by hand stays that way. Promotions are worked
 # out again, like the verdicts.
 #
@@ -41,7 +41,8 @@ sub rescore {
 
     my $old = DBI->connect("dbi:SQLite:dbname=$arg{from}", '', '',
         { RaiseError => 1, PrintError => 0, sqlite_open_flags => DBD::SQLite::OPEN_READONLY() });
-    # Schema 2 is the same without kicks and bans, and 3 without providers.
+    # Schema 2 is the same without kicks and bans, 3 without providers, and 4
+    # without labels.
     my ($version) = $old->selectrow_array('PRAGMA user_version');
     die "$arg{from} is schema $version, and this reads 2 to $Profiler::Store::SCHEMA_VERSION\n"
         if $version < 2 || $version > $Profiler::Store::SCHEMA_VERSION;
@@ -62,6 +63,10 @@ sub rescore {
         my $marks = $old->selectall_arrayref('SELECT ' . join(', ', @columns) . ' FROM marks');
         $new->prepare('INSERT INTO marks (' . join(', ', @columns) . ') VALUES (' . join(', ', ('?') x @columns) . ')')
             ->execute(@$_) for @$marks;
+    }
+    if ($version >= 5) {
+        $new->prepare('INSERT INTO labels (nick_key, nick, label, time) VALUES (?, ?, ?, ?)')->execute(@$_)
+            for @{ $old->selectall_arrayref('SELECT nick_key, nick, label, time FROM labels') };
     }
 
     my %stats = (sightings => 0, promoted => 0, changed => {});

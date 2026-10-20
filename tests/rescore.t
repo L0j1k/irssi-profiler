@@ -83,6 +83,25 @@ subtest 'kicks and bans are kept, and a file from before them is read too' => su
     is($stats->{sightings}, 23, 'a schema 2 file is rescored');
 };
 
+subtest 'labels are kept, and a file from before them is read too' => sub {
+    my $from = old_store();
+    my $store = Profiler::Store->new(File::Basename::dirname($from));
+    $store->set_label('efnet', 'dave', 'bad', $T);
+    $store->close;
+    my $out = tempdir(CLEANUP => 1);
+    Profiler::Rescore::rescore(from => $from, out => $out, network => 'efnet');
+    is(Profiler::Store->new($out)->label('efnet', 'dave'), 'bad', 'labels are copied');
+
+    $from = old_store();
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$from", '', '', { RaiseError => 1 });
+    $dbh->do('DROP TABLE labels');
+    $dbh->do('PRAGMA user_version = 4');
+    $dbh->disconnect;
+    $out = tempdir(CLEANUP => 1);
+    my $stats = Profiler::Rescore::rescore(from => $from, out => $out, network => 'efnet');
+    is($stats->{sightings}, 23, 'a schema 4 file is rescored');
+};
+
 subtest 'it never overwrites' => sub {
     my $from = old_store();
     my $out = tempdir(CLEANUP => 1);

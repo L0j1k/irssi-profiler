@@ -167,6 +167,16 @@ tmux send-keys -t "$session" '/script exec Irssi::Script::profiler::judge({ tag 
 wait_for 'JUPER smokeregular' || fail "someone sitting on a nick was not called a juper"
 wait_for 'juped 1x, last [0-9-]* while smokeregular_ waited' || fail "the jupe was not remembered"
 
+# A label leads every line about whoever has it. BAD follows them onto
+# another nick.
+tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::cmd_profiler('good smokeregular', bless({ tag => 'efnet' }, 'SmokeServer')); $(judge_as smokeregular)" Enter
+wait_for 'smokeregular on efnet is GOOD now' || fail "/profiler good did not say what it did"
+wait_for 'profiler: -=\( GOOD \)=- CONFIDENT smokeregular' || fail "a GOOD nick's line has no label"
+tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::cmd_profiler('bad smokeregular', bless({ tag => 'efnet' }, 'SmokeServer')); $(judge_as smokebadnick)" Enter
+wait_for 'profiler: -=\( BAD \)=- UNKNOWN smokebadnick .*labelled BAD as smokeregular' || fail "BAD did not follow them onto another nick"
+tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::cmd_profiler('unlabel smokeregular', bless({ tag => 'efnet' }, 'SmokeServer'))" Enter
+wait_for 'smokeregular on efnet has no label now' || fail "/profiler unlabel did not take the label away"
+
 tmux send-keys -t "$session" "/profiler show bob" Enter
 wait_for 'needs an active server' || fail "/profiler show without a server"
 

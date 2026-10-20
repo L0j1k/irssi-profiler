@@ -23,6 +23,7 @@ BEGIN {
 use lib Irssi::get_irssi_dir() . '/scripts/profiler-lib';
 use Profiler::Evasion;
 use Profiler::Jupe;
+use Profiler::Label;
 use Profiler::Marks;
 use Profiler::Queue;
 use Profiler::Report;
@@ -91,6 +92,14 @@ my %VARIANT_COLOUR = (
     'VARIANT mixed'      => '%C',
 );
 
+# What you've labelled someone (see Profiler::Label) leads every line about
+# them, before the words above.
+my %LABEL_COLOUR = (
+    GOOD    => '%g',
+    NEUTRAL => '%W',
+    BAD     => '%r',
+);
+
 sub word_format {
     my (@words) = @_;
     (my $name = lc join '_', @words) =~ tr/ /_/;
@@ -98,22 +107,31 @@ sub word_format {
 }
 
 # The colours have to be in the format, since % in the text is kept literal,
-# so there's a format for every pair of words a line can lead with.
-sub coloured { my ($word, $colour) = @_; (my $shown = $word) =~ s/ (consistent|mixed)$//; "$colour$shown%n" }
-my %ONE_WORD = (%WORD_COLOUR, %VARIANT_COLOUR);
+# so there's a format for every combination of words a line can lead with.
+sub coloured {
+    my ($word, $colour) = @_;
+    (my $shown = $word) =~ s/ (consistent|mixed)$//;
+    $shown = "-=( $word )=-" if $LABEL_COLOUR{$word};
+    return "$colour$shown%n";
+}
+my %ONE_WORD = (%WORD_COLOUR, %VARIANT_COLOUR, %LABEL_COLOUR);
+my @words = ((map { [$_] } sort keys %WORD_COLOUR, sort keys %VARIANT_COLOUR),
+    map { my $word = $_; map { [ $word, $_ ] } sort keys %VARIANT_COLOUR } sort keys %WORD_COLOUR);
 Irssi::theme_register([
     profiler_line => '{channick profiler: $0}',
-    (map { word_format($_) => '{channick profiler:} ' . coloured($_, $ONE_WORD{$_}) . ' {channick $0}' } sort keys %ONE_WORD),
     map {
-        my $word = $_;
-        map { word_format($word, $_) => '{channick profiler:} ' . coloured($word, $WORD_COLOUR{$word}) . ' '
-            . coloured($_, $VARIANT_COLOUR{$_}) . ' {channick $0}' } sort keys %VARIANT_COLOUR
-    } sort keys %WORD_COLOUR,
+        my $words = $_;
+        map {
+            my @lead = (@$_, @$words);
+            word_format(@lead) => '{channick profiler:} ' . join(' ', map { coloured($_, $ONE_WORD{$_}) } @lead) . ' {channick $0}'
+        } [], map { [$_] } sort keys %LABEL_COLOUR
+    } @words,
 ]);
 
 # Prints one of our lines in a channel's window, or in the status window when
 # there's no channel or the server has gone. @words, for a line about
-# someone, is one of %WORD_COLOUR's, then one of %VARIANT_COLOUR's, or both.
+# someone, is one of %WORD_COLOUR's, then one of %VARIANT_COLOUR's, or both,
+# with one of %LABEL_COLOUR's in front if they have a label.
 sub say_in {
     my ($tag, $channel, $text, @words) = @_;
     my $format = @words ? word_format(@words) : 'profiler_line';
@@ -396,11 +414,13 @@ sub judge {
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now unless $job->{check};
 
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
-    my ($r, $count, $variant, $waiting, $evasion, @other_nicks, @marks, @promoted);
+    my ($r, $count, $label, $variant, $waiting, $evasion, @other_nicks, @marks, @promoted);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
         $count = $profile ? $profile->{total} : 0;
         $r = Profiler::Score::judge($profile, $obs, $now);
+        # Before this join is recorded, or its own host would make it fit.
+        $label = Profiler::Label::for_join($store, $job->{tag}, $job->{nick}, $obs, $now);
         my $own = Profiler::Marks::in_channel($store->all_marks($job->{tag})->{ lc $job->{nick} } // [],
             $job->{nick}, $job->{channel});
         @marks = @$own if Profiler::Marks::counts($own, $now);
@@ -423,7 +443,7 @@ sub judge {
         1;
     } or return info($@);
 
-    my $say = sub { say_in($job->{tag}, $job->{channel}, @_) };
+    my $say = sub { my ($text, @words) = @_; say_in($job->{tag}, $job->{channel}, $text, $label ? uc $label->{label} : (), @words) };
 
     my ($word, $text) = Profiler::Report::verdict_line($job, $r, {
         count       => $count,
@@ -432,6 +452,7 @@ sub judge {
         verbose     => $job->{check} || Irssi::settings_get_bool('profiler_verbose'),
         hostinfo    => $hostinfo,
         marks       => \@marks,
+        label       => $label,
     });
     if ($variant) {
         my $variant_word;
@@ -564,8 +585,11 @@ sub cmd_profiler {
     }
     elsif ($subcmd eq 'show' && length $arg) {
         return info("/profiler show needs an active server") unless $server;
-        my ($p, @marks) = eval { ($store->profile($server->{tag}, $arg), $store->marks($server->{tag}, $arg)) };
+        my ($label, $p, @marks) = eval {
+            ($store->label($server->{tag}, $arg), $store->profile($server->{tag}, $arg), $store->marks($server->{tag}, $arg))
+        };
         return info($@) if $@;
+        info("$arg on $server->{tag} is labelled " . uc $label) if defined $label;
         info("$arg on $server->{tag}: " . Profiler::Marks::summary(\@marks)
             . '; ' . join(', ', map { $_->{ident} ? "$_->{ident}\@$_->{host}" : '(address unknown)' } @marks)) if @marks;
         return info("no profile for $arg on $server->{tag}") unless $p;
@@ -610,6 +634,21 @@ sub cmd_profiler {
                 $s->{channel} // '?', $s->{ident} // '?', $s->{host} // '?', $s->{version} // '?'));
         }
     }
+    elsif ((grep { $subcmd eq $_ } @Profiler::Label::LABELS, 'unlabel') && length $arg) {
+        return info("/profiler $subcmd needs an active server") unless $server;
+        my $label = $subcmd eq 'unlabel' ? undef : $subcmd;
+        my ($changed, $p) = eval {
+            my $n = $store->set_label($server->{tag}, $arg, $label, time);
+            $store->flush;
+            ($n, $store->profile($server->{tag}, $arg));
+        };
+        return info($@) if $@;
+        return info($changed ? "$arg on $server->{tag} has no label now" : "$arg on $server->{tag} had no label")
+            unless defined $label;
+        info("$arg on $server->{tag} is " . uc($label) . " now, shown when they join from a host they've used"
+            . ($label eq 'bad' ? ', or on any nick when they look like them' : '')
+            . ($p ? '' : "; they've never been seen, so it shows from their second join"));
+    }
     elsif (($subcmd eq 'accept' || $subcmd eq 'reject') && length $arg) {
         return info("/profiler $subcmd needs an active server") unless $server;
         my $n = eval {
@@ -640,6 +679,10 @@ usage: /profiler [-h] [command]
   suspects         quarantined sightings waiting for a look
   accept <nick>    let a nick's quarantined sightings count
   reject <nick>    file a nick's quarantined sightings away
+  good <nick>      label a nick GOOD, NEUTRAL or BAD; it leads every line
+  neutral <nick>   about them when they join from a host they've used, and
+  bad <nick>       BAD also follows them onto other nicks
+  unlabel <nick>   take a nick's label away
   -h               this
 END
 }

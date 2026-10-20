@@ -217,8 +217,9 @@ subtest 'a database from an older profiler is refused' => sub {
 subtest 'a database from an earlier schema is upgraded where it is' => sub {
     # What each older schema lacked.
     my %older = (
-        2 => ['DROP TABLE marks', 'ALTER TABLE sightings DROP COLUMN provider'],
-        3 => ['ALTER TABLE sightings DROP COLUMN provider'],
+        2 => ['DROP TABLE labels', 'DROP TABLE marks', 'ALTER TABLE sightings DROP COLUMN provider'],
+        3 => ['DROP TABLE labels', 'ALTER TABLE sightings DROP COLUMN provider'],
+        4 => ['DROP TABLE labels'],
     );
     for my $version (sort keys %older) {
         my $dir = tempdir(CLEANUP => 1);
@@ -233,13 +234,35 @@ subtest 'a database from an earlier schema is upgraded where it is' => sub {
         is($store->profile('efnet', 'bob')->{total}, 1, "schema $version: sightings are still there");
         $store->record_kick('efnet', { nick => 'bob', channel => '#chan', by => 'op', reason => 'bye' }, 2000);
         $store->record('efnet', { %obs, provider => 'example isp' }, 3000, 'consistent');
+        $store->set_label('efnet', 'bob', 'good', 4000);
         $store->close;
         $dbh = DBI->connect("dbi:SQLite:dbname=$dir/efnet.sqlite", '', '', { RaiseError => 1 });
         is($dbh->selectrow_array('PRAGMA user_version'), $Profiler::Store::SCHEMA_VERSION, "schema $version: upgraded");
         is($dbh->selectrow_array('SELECT count(*) FROM marks'), 1, "schema $version: kicks and bans work");
         is($dbh->selectrow_array('SELECT provider FROM sightings WHERE time = 3000'), 'example isp',
             "schema $version: and so do providers");
+        is($dbh->selectrow_array('SELECT label FROM labels'), 'good', "schema $version: and labels");
     }
+};
+
+subtest 'labels' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    is($store->label('efnet', 'bob'), undef, 'nobody starts with one');
+    $store->set_label('efnet', 'Bob', 'good', 1000);
+    $store->set_label('efnet', 'troll', 'bad', 1000);
+    $store->set_label('efnet', 'troll2', 'bad', 1000);
+    is($store->label('efnet', 'BOB'), 'good', 'whatever the case');
+    $store->set_label('efnet', 'bob', 'neutral', 2000);
+    is($store->label('efnet', 'bob'), 'neutral', 'a new label replaces the old one');
+    is_deeply([ $store->labelled('efnet', 'bad') ], [qw(troll troll2)], 'everyone with a label, sorted');
+
+    $store->flush;
+    is(reopened($dir)->label('efnet', 'bob'), 'neutral', 'stored');
+    is($store->set_label('efnet', 'bob', undef, 3000), 1, 'taking one away says it did');
+    is($store->label('efnet', 'bob'), undef, 'and it is gone');
+    is($store->set_label('efnet', 'bob', undef, 3000), 0, 'and says when there was nothing to take');
+    is($store->label('other', 'bob'), undef, 'unknown network');
 };
 
 subtest 'kicks and bans' => sub {

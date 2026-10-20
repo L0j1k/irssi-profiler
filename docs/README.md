@@ -20,7 +20,9 @@ editing.
 
 Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
 `/profiler nicks <nick>`, `/profiler judge <nick>`, `/profiler suspects`,
-`/profiler accept <nick>`, `/profiler reject <nick>`. `/profiler -h` says
+`/profiler accept <nick>`, `/profiler reject <nick>`, `/profiler good <nick>`,
+`/profiler neutral <nick>`, `/profiler bad <nick>`,
+`/profiler unlabel <nick>`. `/profiler -h` says
 what each does. `/profiler judge` is for someone whose join has scrolled
 away: it looks them up as if they'd just joined the channel in the active
 window (or any channel they're in) and always prints the line, with the
@@ -324,6 +326,27 @@ nick.
   nick. `/profiler show` lists it as `juped 1x, last ... while bob_
   waited`.
 
+## Labels
+
+The scoring can't know what the ops have decided about someone, so you can
+tell it: `/profiler good <nick>`, `/profiler neutral <nick>` or
+`/profiler bad <nick>`, and `/profiler unlabel <nick>` to take it away. A
+label leads every line about that person's joins, as `-=( GOOD )=-` in
+green, `-=( NEUTRAL )=-` in white or `-=( BAD )=-` in red, and changes
+nothing else: the verdict, EVADER and the rest are worked out as usual.
+
+A label only shows when the join comes from a host the nick has used before
+(the same host, address or IRCCloud account), since without that it could be
+anyone wearing the nick. A nearby address or the same ISP isn't enough. So
+someone on a new dynamic address every time won't get theirs. BAD also
+follows the person onto other nicks, matched the same way as EVADER, and the
+line ends with `labelled BAD as <nick>`. Someone labelled BAD always gets a
+line, even when they'd otherwise be quiet. A nick's own label comes first, so
+you can call someone NEUTRAL on the nick they use now even though one of
+their old nicks is BAD.
+
+Labels are kept by a rescore, but not by importing the logs again.
+
 ## Output
 
 Lines are drawn in your theme's `{channick}` colour, the one irssi uses for
@@ -361,7 +384,8 @@ example:
 The formats are `profiler_line` for status messages and `profiler_<word>`
 (lowercase, `_` for the space) for the rest. A variant's word is
 `variant_consistent` or `variant_mixed`, and a line with two words uses
-both, as in `profiler_unknown_variant_consistent`.
+both, as in `profiler_unknown_variant_consistent`. A label (see Labels) goes
+in front, as in `profiler_bad_evader`.
 
 ## Limits
 

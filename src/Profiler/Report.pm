@@ -27,6 +27,8 @@ our $NICKS_SHOWN = 3;
 #   hostinfo     the host lookup, with proxy set on a likely proxy
 #   marks        the nick's kicks and bans, when they still count
 #                (Profiler::Marks::counts), which always gets the line shown
+#   label        the join's label from Profiler::Label::for_join; BAD always
+#                gets the line shown
 sub verdict_line {
     my ($job, $r, $ctx) = @_;
     my $hostinfo = $ctx->{hostinfo} // {};
@@ -43,6 +45,9 @@ sub verdict_line {
     my $seen = $count ? "seen $count time(s) before" : 'never seen before';
     $seen .= ", judged on the latest $Profiler::Store::HISTORY_SIZE" if $count > $Profiler::Store::HISTORY_SIZE;
     $seen .= '; changes nicks often, also ' . nick_list(@{ $ctx->{other_nicks} }) if @{ $ctx->{other_nicks} // [] };
+    my $label = $ctx->{label};
+    my $bad = $label && $label->{label} eq 'bad';
+    $seen .= '; labelled ' . uc($label->{label}) . " as $label->{nick}" if $label && lc $label->{nick} ne lc $job->{nick};
     my $min = $ctx->{min} // 0;
     my $score = sprintf('trust %+.2f (%s, match %+.2f, confidence %.2f)',
         @$r{qw(trust verdict match confidence)});
@@ -92,7 +97,7 @@ sub verdict_line {
     $seen .= '; ' . Profiler::Marks::summary($ctx->{marks}) if $marked;
     # A nick change is always reported, since irssi's own line doesn't say
     # whether the new nick fits.
-    if ($word || $ctx->{verbose} || defined $job->{was} || $bare || $marked) {
+    if ($word || $ctx->{verbose} || defined $job->{was} || $bare || $marked || $bad) {
         my %word = (consistent => 'CONFIDENT', mixed => 'MIXED', unknown => 'UNKNOWN');
         return ($word // $word{ $r->{verdict} }, "$who has $score; $seen");
     }

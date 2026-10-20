@@ -57,6 +57,17 @@ my @MARKS_SCHEMA = (
     "CREATE UNIQUE INDEX IF NOT EXISTS marks_once ON marks (kind, channel, time, ifnull(nick_key, ''), ifnull(mask, ''))",
 );
 
+# What you said about a nick with /profiler good, neutral or bad (see
+# Profiler::Label), one per nick.
+my @LABELS_SCHEMA = (
+    'CREATE TABLE IF NOT EXISTS labels (
+        nick_key TEXT PRIMARY KEY,
+        nick     TEXT NOT NULL,
+        label    TEXT NOT NULL,
+        time     INTEGER NOT NULL
+    )',
+);
+
 my @SCHEMA = (
     'CREATE TABLE IF NOT EXISTS sightings (
         id          INTEGER PRIMARY KEY,
@@ -98,15 +109,17 @@ my @SCHEMA = (
     )',
     'CREATE INDEX IF NOT EXISTS nick_links_by_b ON nick_links (b)',
     @MARKS_SCHEMA,
+    @LABELS_SCHEMA,
 );
 
 # Stored in the database as PRAGMA user_version. Bump it whenever the schema
 # changes, and add the steps from the old version to %UPGRADE if the old
 # data still fits. A version with no steps is refused and gets re-imported.
-our $SCHEMA_VERSION = 4;
+our $SCHEMA_VERSION = 5;
 my %UPGRADE = (
     2 => \@MARKS_SCHEMA,
     3 => ['ALTER TABLE sightings ADD COLUMN provider TEXT'],
+    4 => \@LABELS_SCHEMA,
 );
 
 sub new {
@@ -419,6 +432,30 @@ sub similar {
     my $dbh = $self->db($network) or return ();
     return @{ $dbh->selectcol_arrayref('SELECT nick_key FROM nicks WHERE skeleton = ? AND nick_key != ? ORDER BY nick_key',
         undef, Profiler::Nick::skeleton($nick), lc $nick) };
+}
+
+# Gives a nick a label (good, neutral or bad), replacing any it had, or takes
+# it away when $label is undef. Returns how many labels changed.
+sub set_label {
+    my ($self, $network, $nick, $label, $time) = @_;
+    my $dbh = $self->db($network, 1);
+    return $dbh->do('DELETE FROM labels WHERE nick_key = ?', undef, lc $nick) + 0 unless defined $label;
+    return $dbh->do('INSERT OR REPLACE INTO labels (nick_key, nick, label, time) VALUES (?, ?, ?, ?)',
+        undef, lc $nick, $nick, $label, $time) + 0;
+}
+
+# A nick's label, or undef.
+sub label {
+    my ($self, $network, $nick) = @_;
+    my $dbh = $self->db($network) or return undef;
+    return scalar $dbh->selectrow_array('SELECT label FROM labels WHERE nick_key = ?', undef, lc $nick);
+}
+
+# Every nick with this label, sorted.
+sub labelled {
+    my ($self, $network, $label) = @_;
+    my $dbh = $self->db($network) or return ();
+    return @{ $dbh->selectcol_arrayref('SELECT nick_key FROM labels WHERE label = ? ORDER BY 1', undef, $label) };
 }
 
 sub set_hostinfo {
