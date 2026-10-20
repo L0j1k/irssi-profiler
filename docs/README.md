@@ -75,8 +75,12 @@ about 80 seconds and writes 20 MB. Run it with `--help` for the options.
    away mid-reply, the join is judged on what it gave us. `/profiler list`
    shows how many lookups are still waiting. Once both are in, the joiner's host is resolved
    and run through the system `whois` in a child process. The registry record
-   is checked for VPN/proxy/Tor/hosting keywords. Results are cached per host
-   for `profiler_hostinfo_max_age` seconds.
+   is checked for VPN/proxy/Tor/hosting keywords. In the same child, with
+   `profiler_probe` on (the default), the address is knocked on for the open
+   ports in the default set or the rules file's `port` lines, and a short
+   banner is read from each one that answers. Results are cached per host
+   for `profiler_hostinfo_max_age` seconds, so a node is scanned at most once
+   per window.
 3. The joiner is judged against the earlier sightings of that nick, then the
    sighting is recorded in the SQLite database
    `~/.irssi/scripts/profiler-data/<network>.sqlite`, committed straight
@@ -114,6 +118,16 @@ Each attribute of a join scores from -1 to +1 against that history:
   realname, server or version.
 - **Host on a likely proxy:** skipped too, since many people share those,
   unless it has a custom name or is an IRCCloud account (below).
+- **Open ports:** the set of ports found open is a light "where from" signal
+  like the host, weighted below the identity attributes. Two sightings score
+  by how much their open-port sets overlap. It survives a change of dynamic
+  address (same node, new IP, same services), which is where the host name
+  fails. A port mismatch on its own can't make a suspect, and on a likely
+  proxy the ports are skipped like the host. Banners are kept for review but
+  not scored, since the same service varies from one connection to the next.
+  An open proxy port we connected straight through (SOCKS, Tor, an HTTP proxy;
+  the `proxyport` rules line adds more) is the one exception: it makes the
+  join suspect whatever else matched.
 
 Host names come in kinds. IRC servers only show a name that resolves back
 to the address, so a name somebody chose, like `irc.example.net`, means
@@ -401,6 +415,11 @@ in front, as in `profiler_bad_evader`.
   `notproxy <phrase>` lines to clear records with that phrase.
 - Cloaked hosts (`user/bob`) can't be resolved, so they get no subnet or
   proxy check.
+- Port probing actively connects to the joiner's address. It's meant for a
+  network you run, where the clients are yours. Scanning hosts you don't own
+  or aren't authorised to test is a bad idea; `profiler_probe off` turns it off.
+  Banners are read passively: a service that doesn't speak first (plain HTTP)
+  opens with no banner.
 - Profiles are keyed by nick. A variant nick gets its own profile from
   zero, and the variant search (above) is what connects it to the usual one.
 - The variant search only looks one nick change away, and only at nicks
