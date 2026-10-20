@@ -304,6 +304,21 @@ nick.
   (~lol@cpe-1-2-9-9.res.example.net) looks like trollguy (kicked 1x, last
   ...): host, ident match; match +0.80 against them`. A common ident on a
   big ISP can match a stranger, so read what matched.
+- **JUPER.** Juping is sitting on someone's nick so they can't have it,
+  and they end up waiting on a variant like `bob_`. When a join on a
+  variant nick is CONFIDENT against that nick's history (and over the
+  channel's min_trust), whoever holds the nick now gets a WHOIS and
+  VERSION, at most once per `profiler_recheck`. If their ident, realname
+  or client disagrees with the nick's history, and the match is below 0,
+  that's a jupe: `JUPER bob (lol@troll.example.org, client: mIRC v7.77) is
+  sitting on bob's nick while bob_, who fits bob's history, waits: ident,
+  client don't match; match -1.00 against bob. Remembered as a juper`.
+  Lots of people run two clients, so bob on bob with his usual ident,
+  realname and client, from any host, is left alone. A jupe is remembered
+  like a ban, with the same weight, and the EVADER search uses it, so the
+  juper gets a JUPER line instead of EVADER when they join again on any
+  nick. `/profiler show` lists it as `juped 1x, last ... while bob_
+  waited`.
 
 ## Output
 
@@ -315,6 +330,7 @@ someone starts with a one-word summary in its own colour:
 |-----------|---------------|-------|
 | WARNING   | bright red    | under the channel's min_trust with something against them, or on a likely proxy that's new for them |
 | EVADER    | bright red    | looks like someone who was kicked or banned, under another nick |
+| JUPER     | purple        | sitting on a nick its owner is waiting for, or looks like someone caught doing that |
 | UNPROVEN  | bright purple | under the channel's min_trust, but everything matches: just not much history yet |
 | SUSPECT   | bright yellow | doesn't match the nick's history |
 | MIXED     | bright cyan   | partly matches |

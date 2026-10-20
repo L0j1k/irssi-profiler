@@ -140,7 +140,14 @@ sub age_weight {
 sub held {
     my ($verdict, $match, $parts) = @_;
     return 1 if $verdict eq 'suspect' || $verdict eq 'new host';
-    return $verdict eq 'unknown' && ($match // 0) < 0 && any { ($parts->{$_} // 0) < 0 } @IDENTITY_ATTRS;
+    return $verdict eq 'unknown' && ($match // 0) < 0 && identity_contradicted($parts);
+}
+
+# Does any of ident, realname or client disagree, in judge's parts? Those
+# are what tell two people on the same host or ISP apart.
+sub identity_contradicted {
+    my ($parts) = @_;
+    return any { ($parts->{$_} // 0) < 0 } @IDENTITY_ATTRS;
 }
 
 # Sightings that count: everything except what was quarantined as suspect.
@@ -288,7 +295,7 @@ sub judge {
         provider_seen => defined $obs->{provider}
             && (any { ($_->[0]{provider} // '') eq $obs->{provider} } @weighted) ? 1 : 0,
     );
-    my $identity_contradicted = grep { ($parts{$_} // 0) < 0 } @IDENTITY_ATTRS;
+    my $identity_contradicted = identity_contradicted(\%parts);
     # A different ident, realname or client means it may well be someone
     # else, like a second person on the same shell box, however much else
     # matches.

@@ -119,13 +119,15 @@ sub variant_line {
     return ($word, "VARIANT $v->{verdict}", defined $text ? "$text; $looks" : "$job->{nick} $looks");
 }
 
-# The warning for a join that looks like someone who was kicked or banned
-# (see Profiler::Evasion::best_match).
+# The warning for a join that looks like someone who was kicked, banned or
+# caught juping (see Profiler::Evasion::best_match). It's JUPER when they
+# juped, which is the worse of the two.
 sub evader_line {
     my ($job, $evasion) = @_;
     my $r = $evasion->{result};
     my $matches = what_matches($r, qw(host ident realname version)) // 'nothing contradicts';
-    return ('EVADER', sprintf('%s (%s@%s) looks like %s (%s): %s; match %+.2f against them', $job->{nick},
+    my $word = (grep { $_->{kind} eq 'jupe' } @{ $evasion->{marks} }) ? 'JUPER' : 'EVADER';
+    return ($word, sprintf('%s (%s@%s) looks like %s (%s): %s; match %+.2f against them', $job->{nick},
         $job->{ident}, $job->{host}, $evasion->{nick}, Profiler::Marks::summary($evasion->{marks}), $matches, $r->{match}));
 }
 
@@ -140,14 +142,36 @@ sub moved_line {
         . "now count toward their history. /profiler show $job->{nick} to check");
 }
 
+# The line for catching someone juping a nick (see Profiler::Jupe): $job is
+# whoever holds it, $r what Profiler::Jupe::juper said, and $waiting the
+# variant its owner is waiting on.
+sub juper_line {
+    my ($job, $r, $waiting) = @_;
+    my $differs = what_differs($r, qw(ident realname version));
+    return ('JUPER', sprintf("%s (%s@%s, client: %s) is sitting on %s's nick while %s, who fits %s's history, waits: "
+        . '%s; match %+.2f against %s. Remembered as a juper', $job->{nick}, $job->{ident}, $job->{host},
+        $job->{version}, $job->{nick}, $waiting, $job->{nick}, $differs, $r->{match}, $job->{nick}));
+}
+
 # "ident, client match" for the attributes that scored in favour, or undef
 # when none did.
 sub what_matches {
     my ($r, @attrs) = @_;
+    return labelled([ grep { ($r->{parts}{$_} // 0) > 0 } @attrs ], 'matches', 'match');
+}
+
+# "ident doesn't match" for the attributes that scored against, or undef
+# when none did.
+sub what_differs {
+    my ($r, @attrs) = @_;
+    return labelled([ grep { ($r->{parts}{$_} // 0) < 0 } @attrs ], "doesn't match", "don't match");
+}
+
+sub labelled {
+    my ($attrs, $one, $many) = @_;
     my %label = (host => 'host', ident => 'ident', realname => 'realname', version => 'client');
-    my @same = map { $label{$_} } grep { ($r->{parts}{$_} // 0) > 0 } @attrs;
-    return undef unless @same;
-    return join(', ', @same) . (@same == 1 ? ' matches' : ' match');
+    return undef unless @$attrs;
+    return join(', ', map { $label{$_} } @$attrs) . ' ' . (@$attrs == 1 ? $one : $many);
 }
 
 1;

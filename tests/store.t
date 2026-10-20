@@ -269,6 +269,12 @@ subtest 'kicks and bans' => sub {
 
     $store->flush;
     is(scalar(() = reopened($dir)->marks('efnet', 'troll')), 2, 'stored');
+
+    $store->record_jupe('efnet', { %troll, nick => 'bob', channel => '#chan', by => 'bob_' }, 13 * $day);
+    my ($jupe) = $store->marks('efnet', 'bob');
+    is_deeply([ @$jupe{qw(kind ident host by)} ], [ 'jupe', '~lol', 'a.example.org', 'bob_' ],
+        'a jupe marks whoever sat on the nick, by who was kept off it');
+    is($store->all_marks('efnet')->{bob}[0]{kind}, 'jupe', 'and the evasion search sees it');
 };
 
 subtest 'odd network names make safe file names' => sub {

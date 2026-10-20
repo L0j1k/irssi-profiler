@@ -22,6 +22,7 @@ BEGIN {
 
 use lib Irssi::get_irssi_dir() . '/scripts/profiler-lib';
 use Profiler::Evasion;
+use Profiler::Jupe;
 use Profiler::Marks;
 use Profiler::Queue;
 use Profiler::Report;
@@ -73,6 +74,7 @@ my %recent;
 my %WORD_COLOUR = (
     WARNING     => '%R',
     EVADER      => '%R',
+    JUPER       => '%m',
     UNPROVEN    => '%M',
     SUSPECT     => '%Y',
     MIXED       => '%C',
@@ -329,7 +331,9 @@ sub finish_if_ready {
     delete $pending{$key};
 
     my %found = map { defined $entry->{$_} ? ($_ => $entry->{$_}) : () } qw(ident host realname server version);
-    look_up_host({ %$_, %found }) for @{ $entry->{jobs} };
+    # A jupe check has no host of its own, and none from WHOIS means the
+    # nick is free, so there's nobody to judge.
+    look_up_host($_) for grep { defined $_->{host} } map { { %$_, %found } } @{ $entry->{jobs} };
 }
 
 sub look_up_host {
@@ -387,11 +391,12 @@ sub judge {
     my ($job, $hostinfo) = @_;
     my $obs = { %$job, ip => $hostinfo->{ip}, proxy => $hostinfo->{proxy}, provider => Profiler::Whois::provider($hostinfo) };
     my $now = time;
+    local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
+    return judge_holder($job, $obs, $now) if defined $job->{jupe_of};
     $recent{ recent_key($job->{tag}, $job->{channel}, $job->{nick}) } = $now unless $job->{check};
 
-    local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
-    my ($r, $count, $variant, $evasion, @other_nicks, @marks, @promoted);
+    my ($r, $count, $variant, $waiting, $evasion, @other_nicks, @marks, @promoted);
     eval {
         my $profile = $store->profile($job->{tag}, $job->{nick});
         $count = $profile ? $profile->{total} : 0;
@@ -406,6 +411,7 @@ sub judge {
         # be someone familiar on a jupe-driven variant like bob_.
         $variant = Profiler::Variants::best_match($store, $job->{tag}, $job->{nick}, $obs, $now)
             if $r->{verdict} eq 'unknown' || $r->{verdict} eq 'suspect';
+        $waiting = Profiler::Jupe::waiting_for($store, $job->{tag}, $job->{nick}, $obs, $now) unless $job->{check};
         @other_nicks = Profiler::Variants::changes_nicks_often($store, $job->{tag}, $job->{nick}, $job->{was} // ());
         unless ($job->{check}) {
             $store->record($job->{tag}, $obs, $now, @$r{qw(verdict match parts)});
@@ -445,6 +451,41 @@ sub judge {
         my ($moved_word, $moved_text) = Profiler::Report::moved_line($job, \@promoted);
         $say->($moved_text, $moved_word);
     }
+
+    check_for_jupe($job, $waiting->{nick}, $now)
+        if $waiting && !Profiler::Rules::below_minimum($waiting->{result}, $min);
+}
+
+# $job joined on a variant of $nick and fits $nick's history, so they may be
+# waiting for someone to let go of it. That someone gets a WHOIS and VERSION,
+# like a join, and judge_holder has a look.
+sub check_for_jupe {
+    my ($job, $nick, $now) = @_;
+    my $server = Irssi::server_find_tag($job->{tag});
+    return unless $server && lc $nick ne lc $server->{nick};
+    my $rkey = recent_key($job->{tag}, 'jupe', $nick);
+    return if $recent{$rkey} && $now - $recent{$rkey} < Irssi::settings_get_int('profiler_recheck');
+    $recent{$rkey} = $now;
+    queue_for($job->{tag})->add($rkey, { tag => $job->{tag}, channel => $job->{channel}, nick => $nick,
+        jupe_of => $job->{nick} }, $now);
+}
+
+# Whoever holds a nick that someone is waiting for (see check_for_jupe).
+# When they're not its owner, that's a jupe: it's said, and remembered like a
+# ban, so they're a JUPER when they turn up again on any nick.
+sub judge_holder {
+    my ($job, $obs, $now) = @_;
+    my $r;
+    eval {
+        $r = Profiler::Jupe::juper($store, $job->{tag}, $obs, $now) or return 1;
+        $store->record_jupe($job->{tag}, { nick => $job->{nick}, ident => $job->{ident}, host => $job->{host},
+            channel => $job->{channel}, by => $job->{jupe_of} }, $now);
+        $store->flush;
+        1;
+    } or return info($@);
+    return unless $r;
+    my ($word, $text) = Profiler::Report::juper_line($job, $r, $job->{jupe_of});
+    say_in($job->{tag}, $job->{channel}, $text, $word);
 }
 
 # Someone was kicked from a watched channel. irssi gives the kicker's

@@ -18,6 +18,9 @@ use Profiler::Score;
 # since bots kick whoever an op bans, so a ban is often a kick as well.
 our $BAN_WEIGHT = 1;
 our $KICK_WEIGHT = 0.5;
+# A jupe is sitting on someone's nick while they wait on a variant of it (see
+# Profiler::Jupe). It's as unwanted as getting banned.
+our $JUPE_WEIGHT = 1;
 
 # A record counts from this weight: a ban in the last two half-lives, or a
 # kick in the last one.
@@ -58,9 +61,8 @@ sub in_channel {
 
 sub weight {
     my ($marks, $now) = @_;
-    return sum0(map {
-        ($_->{kind} eq 'ban' ? $BAN_WEIGHT : $KICK_WEIGHT) * Profiler::Score::age_weight($_, $now)
-    } @$marks);
+    my %weight = (ban => $BAN_WEIGHT, kick => $KICK_WEIGHT, jupe => $JUPE_WEIGHT);
+    return sum0(map { $weight{ $_->{kind} } * Profiler::Score::age_weight($_, $now) } @$marks);
 }
 
 sub counts {
@@ -69,15 +71,19 @@ sub counts {
 }
 
 # "banned 1x, kicked 2x, last 2026-09-02 by alice (shamed)", with the
-# latest kick or ban. @$marks are oldest first, as Store::marks gives them.
+# latest mark. For a jupe that's "while bob_ waited", since a jupe's by is
+# who was kept off their nick. @$marks are oldest first, as Store::marks
+# gives them.
 sub summary {
     my ($marks) = @_;
     my %n;
     $n{ $_->{kind} }++ for @$marks;
-    my @counts = map { $n{$_} ? ($_ eq 'ban' ? 'banned' : 'kicked') . " $n{$_}x" : () } qw(ban kick);
+    my %done = (ban => 'banned', kick => 'kicked', jupe => 'juped');
+    my @counts = map { $n{$_} ? "$done{$_} $n{$_}x" : () } qw(ban kick jupe);
     my $last = $marks->[-1];
     my $why = defined $last->{reason} && length $last->{reason} ? " ($last->{reason})" : '';
-    return join(', ', @counts) . ', last ' . strftime('%Y-%m-%d', localtime $last->{time}) . " by $last->{by}$why";
+    my $who = $last->{kind} eq 'jupe' ? " while $last->{by} waited" : " by $last->{by}$why";
+    return join(', ', @counts) . ', last ' . strftime('%Y-%m-%d', localtime $last->{time}) . $who;
 }
 
 1;

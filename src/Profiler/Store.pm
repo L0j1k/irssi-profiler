@@ -344,6 +344,14 @@ sub record_ban {
     $self->insert_mark($network, 'ban', { %$ban, %$_, reason => undef }, $time) for @who ? @who : ({});
 }
 
+# Someone was juping a nick (see Profiler::Jupe). $jupe is { nick, ident,
+# host, channel, by }: the nick and whoever sat on it, the channel where its
+# owner turned up on a variant, and the variant they waited on.
+sub record_jupe {
+    my ($self, $network, $jupe, $time) = @_;
+    $self->insert_mark($network, 'jupe', { %$jupe, mask => undef, reason => undef }, $time);
+}
+
 sub insert_mark {
     my ($self, $network, $kind, $mark, $time) = @_;
     my $nick = $mark->{nick};

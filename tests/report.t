@@ -101,6 +101,20 @@ subtest 'someone who looks like a kicked or banned person' => sub {
     is($word, 'EVADER', 'gets its own word');
     is($text, "n3wguy (~bob\@host.example.net) looks like trollguy (kicked 1x, last $kicked_on by op (shamed)): "
         . 'host, ident match; match +0.80 against them', $text);
+
+    my $jupe = { kind => 'jupe', time => 1_700_000_000, by => 'bob_', channel => '#chan' };
+    ($word, $text) = Profiler::Report::evader_line({ %job, nick => 'n3wguy' }, { %$evasion, marks => [ @kicked, $jupe ] });
+    is($word, 'JUPER', 'someone who juped is a juper');
+    like($text, qr/looks like trollguy \(kicked 1x, juped 1x, last $kicked_on while bob_ waited\)/, $text);
+};
+
+subtest 'someone sitting on the nick its owner is waiting for' => sub {
+    my $r = { match => -0.7, parts => { host => -1, ident => -1, version => 0.5 } };
+    my ($word, $text) = Profiler::Report::juper_line({ %job, ident => 'lol', host => 'troll.example.org',
+        version => 'mIRC v7.77' }, $r, 'bob_');
+    is($word, 'JUPER', 'gets its own word');
+    is($text, "bob (lol\@troll.example.org, client: mIRC v7.77) is sitting on bob's nick while bob_, who fits "
+        . "bob's history, waits: ident doesn't match; match -0.70 against bob. Remembered as a juper", $text);
 };
 
 subtest 'a move says which held joins now count' => sub {

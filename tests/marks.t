@@ -46,6 +46,8 @@ subtest 'how much a record of kicks and bans counts' => sub {
     ok(!Profiler::Marks::counts([ $ban->(200) ], $NOW), 'but not after');
     ok(Profiler::Marks::counts([ $kick->(30) ], $NOW), 'a kick counts for one');
     ok(!Profiler::Marks::counts([ $kick->(100) ], $NOW), 'but not after');
+    is(Profiler::Marks::weight([ { kind => 'jupe', time => $NOW, by => 'bob_', channel => '#chan' } ], $NOW), 1,
+        'a jupe counts as much as a ban');
 };
 
 subtest 'the kicks and bans that say something about a join' => sub {
@@ -68,6 +70,9 @@ subtest 'summary' => sub {
     my $date = strftime('%Y-%m-%d', localtime $t);
     is(Profiler::Marks::summary(\@marks), "banned 1x, kicked 2x, last $date by alice (shamed)", 'counts and the latest');
     is(Profiler::Marks::summary([ $marks[1] ]), "banned 1x, last $date by alice", 'a ban has no reason');
+    my $jupe = { kind => 'jupe', time => $t, by => 'bob_', channel => '#chan' };
+    is(Profiler::Marks::summary([ $marks[0], $jupe ]), "kicked 1x, juped 1x, last $date while bob_ waited",
+        'a jupe says who was kept off their nick');
 };
 
 done_testing;

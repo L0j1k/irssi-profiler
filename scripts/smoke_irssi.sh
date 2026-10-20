@@ -161,6 +161,12 @@ grep -q 'EVADER smokeregular' <<< "$before" && fail "a regular known since befor
 tmux send-keys -t "$session" "/script exec $(judge_as smokenewbie)" Enter
 wait_for 'EVADER smokenewbie' || fail "a new nick like someone banned is not an evader"
 
+# Whoever holds a nick its owner is waiting for, as someone else entirely,
+# is a juper, and that's remembered.
+tmux send-keys -t "$session" '/script exec Irssi::Script::profiler::judge({ tag => "efnet", channel => "#chan", nick => "smokeregular", ident => "~juper", host => "jupe.example", version => "mIRC", jupe_of => "smokeregular_" }, {}); Irssi::Script::profiler::cmd_profiler("show smokeregular", bless({ tag => "efnet" }, "SmokeServer"))' Enter
+wait_for 'JUPER smokeregular' || fail "someone sitting on a nick was not called a juper"
+wait_for 'juped 1x, last [0-9-]* while smokeregular_ waited' || fail "the jupe was not remembered"
+
 tmux send-keys -t "$session" "/profiler show bob" Enter
 wait_for 'needs an active server' || fail "/profiler show without a server"
 
