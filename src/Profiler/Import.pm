@@ -244,7 +244,7 @@ sub replay {
             my $sighting = observe($store, $network, $obs, $e->{time});
             $stats{joins}++;
             $stats{verdicts}{ $sighting->{verdict} }++;
-            $stats{promoted} += $store->promote_if_moved($network, $e->{nick}, $e->{time}, $promote_count, $promote_days);
+            $stats{promoted} += () = $store->promote_if_moved($network, $e->{nick}, $e->{time}, $promote_count, $promote_days);
         }
     }
     $store->flush;
