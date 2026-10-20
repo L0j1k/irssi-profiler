@@ -12,7 +12,7 @@
 # open. The live database runs in WAL mode, so copying over it while irssi
 # holds it open leaves irssi's WAL beside the new file, and SQLite replays
 # those pages into it on the next open. The old database is kept as
-# <network>.sqlite.<date-time>.old, one per install; delete them yourself.
+# <network>.sqlite.<date-time>.old, and earlier backups are deleted.
 set -euo pipefail
 
 usage() { sed -n '5,8p' "$0" | sed 's/^# \{0,1\}//'; }
@@ -78,8 +78,6 @@ if ! check_not_open "$dest" "$dest-wal" "$dest-shm"; then
     exit 1
 fi
 
-# Every install keeps its own backup, so installing twice can't lose the
-# database from before the first one.
 backup="$dest.$(date +%Y-%m-%d-%H%M%S).old"
 if [[ -e "$backup" ]]; then
     echo "$backup already exists; wait a second and run it again" >&2
@@ -95,4 +93,10 @@ if [[ -e "$dest" ]]; then
 fi
 rm -f "$dest-wal" "$dest-shm"
 mv "$dest.new" "$dest"
+# The databases are big, so only the backup we just made is worth keeping.
+if [[ -n "$kept" ]]; then
+    for old in "$dest".*-*.old; do
+        [[ "$old" == "$backup" ]] || rm -f "$old"
+    done
+fi
 echo "installed $dest$kept; now /script load profiler"

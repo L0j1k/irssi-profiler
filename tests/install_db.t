@@ -46,7 +46,7 @@ subtest 'installs the new file, keeps the old one, and clears the old WAL' => su
     like $out, qr/kept the old one as .*efnet\.sqlite\.\d{4}-\d\d-\d\d-\d{6}\.old/, 'says where the old one went';
 };
 
-subtest 'a second install keeps every earlier backup' => sub {
+subtest 'a second install keeps only the newest backup' => sub {
     my ($tmp, $data) = setup();
     write_file("$data/efnet.sqlite", 'first');
     write_file("$data/efnet.sqlite.old", 'older still');
@@ -57,7 +57,7 @@ subtest 'a second install keeps every earlier backup' => sub {
     ($status, $out) = run("--from '$tmp/build' EFNet '$tmp/irssi'");
     is $status, 0, 'second install succeeds' or diag $out;
     is read_file("$data/efnet.sqlite"), 'newer', 'newest database in place';
-    is_deeply [ map { read_file($_) } backups($data) ], [ 'first', 'new' ], 'both replaced databases kept, oldest first';
+    is_deeply [ map { read_file($_) } backups($data) ], [ 'new' ], 'only the database it just replaced is kept';
     is read_file("$data/efnet.sqlite.old"), 'older still', 'a backup from before dated names left alone';
 };
 
