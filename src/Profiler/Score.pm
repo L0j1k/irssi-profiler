@@ -171,11 +171,10 @@ sub similarity {
     # Channel names aren't case sensitive. The store keeps them lowercased,
     # but a join arrives as the channel was typed.
     return lc $seen->{channel} eq lc $obs->{channel} ? 1 : 0 if $attr eq 'channel';
-    # IRCCloud idents are uidNNN on the free tier and sidNNN with a
-    # subscription, so the same account can turn up with either.
+    # The same IRCCloud account can turn up with a few idents.
     if ($attr eq 'ident') {
-        my ($seen_account) = $seen->{ident} =~ /^[us]id(\d+)$/ or return 0;
-        my ($obs_account) = $obs->{ident} =~ /^[us]id(\d+)$/ or return 0;
+        my $seen_account = Profiler::Host::irccloud_account($seen->{ident}) // return 0;
+        my $obs_account = Profiler::Host::irccloud_account($obs->{ident}) // return 0;
         return $seen_account eq $obs_account ? 1 : 0;
     }
     if ($attr eq 'version') {

@@ -87,10 +87,19 @@ sub solid_key {
     # Not cached, since it can depend on the ident.
     if ($kind eq 'irccloud') {
         my ($account) = $host =~ /^id-(\d+)\./i;
-        ($account) = ($ident // '') =~ /^[us]id(\d+)$/ unless defined $account;
+        $account //= irccloud_account($ident);
         return defined $account ? "irccloud:$account" : undef;
     }
     return $key_cache{$host} = $kind eq 'custom' || $kind eq 'spoof' ? lc $host : undef;
+}
+
+# The IRCCloud account number in an ident, or undef. It's uidNNN on the free
+# tier and sidNNN with a subscription, and older connections have it with a
+# tilde, like ~sidNNN.
+sub irccloud_account {
+    my ($ident) = @_;
+    my ($account) = ($ident // '') =~ /^~?[us]id(\d+)$/;
+    return $account;
 }
 
 1;

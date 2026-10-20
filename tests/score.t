@@ -257,6 +257,8 @@ subtest 'an established custom or irccloud host is solid' => sub {
     $r = judge($history->(%craig), { %craig, host => 'tinside.irccloud.com', ident => 'uid100001' });
     ok($r->{parts}{ident} > 0, 'a lapsed subscription (sid to uid) is the same ident');
     is($r->{verdict}, 'consistent', 'and the same account');
+    $r = judge($history->(%craig), { %craig, host => 'highgate.irccloud.com', ident => '~sid100001' });
+    ok($r->{parts}{ident} > 0, 'and so is the older form with a tilde');
     ok(judge($history->(%craig), { %craig, ident => 'uid100002' })->{parts}{ident} < 0, 'another account is not');
 
     # Everyone on an IRCCloud server shares its host and addresses.
