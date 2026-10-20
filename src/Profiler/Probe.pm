@@ -6,6 +6,8 @@ use warnings;
 use IO::Socket::IP;
 use IO::Select;
 
+use Profiler::Host;
+
 # The ports we knock on for a joiner's address. A mix of the services an
 # automation node is likely to run and the ports an open proxy or relay
 # listens on. The rules file can replace this list with "port <n>" lines.
@@ -58,6 +60,21 @@ sub banner_text {
     my ($results) = @_;
     my @parts = map { "$_->{port}=$_->{banner}" } grep { defined $_->{banner} } @$results;
     return @parts ? join(' | ', @parts) : undef;
+}
+
+# Why we'd leave a host alone, or undef when it's fair game. Shared services
+# where the address isn't the person's own machine are skipped: a fingerprint
+# of them says nothing about who this is, and the scan just hits someone else's
+# infrastructure. IRCCloud is the built-in case; the rules file adds more with
+# "notprobe <phrase>", matched as a substring of the host name.
+sub skip_reason {
+    my ($host, $not_probe) = @_;
+    return 'irccloud' if Profiler::Host::kind($host) eq 'irccloud';
+    my $lc = lc $host;
+    for my $phrase (@{ $not_probe // [] }) {
+        return $phrase if index($lc, $phrase) >= 0;
+    }
+    return undef;
 }
 
 # The lowest proxy port open in a signature, or undef. $proxy_ports is the list

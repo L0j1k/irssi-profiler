@@ -69,6 +69,17 @@ subtest 'port and proxyport lines' => sub {
     like($errors->[0], qr/^line 4: port needs/, 'error names the line');
 };
 
+subtest 'notprobe lines' => sub {
+    my ($rules, $errors) = Profiler::Rules::parse(
+        "notprobe irccloud.com\n",
+        "notprobe My Shell Box\n",
+        "notprobe\n",
+    );
+    is_deeply($rules->{not_probe}, ['irccloud.com', 'my shell box'], 'phrases kept, lowercased');
+    is(scalar @$errors, 1, 'an empty notprobe line is an error');
+    like($errors->[0], qr/^line 3: notprobe needs/, 'error names the line');
+};
+
 subtest 'min_trust_for' => sub {
     my ($rules) = Profiler::Rules::parse(
         "efnet #chan,#other 0.6\n",

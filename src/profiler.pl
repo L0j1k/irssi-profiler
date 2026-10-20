@@ -396,7 +396,10 @@ sub look_up_host {
     };
     return info($@) if $@;
 
-    my $probe = Irssi::settings_get_bool('profiler_probe');
+    # Shared services (IRCCloud, anything the rules file's notprobe lines name)
+    # aren't the person's own machine, so we leave them alone.
+    my $do_probe = Irssi::settings_get_bool('profiler_probe')
+        && !Profiler::Probe::skip_reason($job->{host}, $rules->{not_probe});
 
     if ($info) {
         # The whois is still fresh. If probing is on and this host has never
@@ -404,7 +407,7 @@ sub look_up_host {
         # in the port fingerprint without redoing the whois. Otherwise the
         # cache is enough. An empty ports string means we probed and found
         # nothing open, so it counts as probed.
-        return judge($job, $info) unless $probe && defined $info->{ip} && !defined $info->{ports};
+        return judge($job, $info) unless $do_probe && defined $info->{ip} && !defined $info->{ports};
         my ($ip, @args) = ($info->{ip}, probe_args());
         return lookup_in_child($job, $info, sub { probe_result($ip, @args) });
     }
@@ -416,7 +419,7 @@ sub look_up_host {
         my $res = Profiler::Whois::lookup($job->{host}, $keywords, $timeout, $rules->{not_proxy});
         # Knock on the address whois just resolved. Even when whois itself timed
         # out we may still have the address, so this goes by the address alone.
-        if ($probe && defined $res->{ip}) {
+        if ($do_probe && defined $res->{ip}) {
             my $p = probe_result($res->{ip}, @args);
             @$res{qw(ports banners)} = @$p{qw(ports banners)};
         }

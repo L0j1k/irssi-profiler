@@ -27,15 +27,19 @@
 #
 #   port <n[,n...]>
 #   proxyport <n[,n...]>
+#   notprobe <phrase>
 #
 # When profiler_probe is on, every joiner's address is knocked on to fingerprint
 # the host. A port line replaces the default set of ports we knock on; with no
 # port line the built-in set is used (22, 80, 443, 1080, 3128, 4145, 6667, 6697,
 # 8080, 8118, 9050, 9051). A proxyport line adds to the ports that, found open,
 # mean we connected straight through an open proxy and make the join suspect on
-# its own (the built-in list is 1080, 3128, 4145, 8118, 9050, 9051). The probe
-# result is cached with the whois for profiler_hostinfo_max_age. Banners are
-# kept for review but don't affect the score.
+# its own (the built-in list is 1080, 3128, 4145, 8118, 9050, 9051). A notprobe
+# line names a host we never knock on (substring match), for shared services
+# where the address isn't the person's own machine; IRCCloud is skipped
+# already. The probe result is cached with the whois for
+# profiler_hostinfo_max_age. Banners are kept for review but don't affect the
+# score.
 
 efnet #CHAN 0.5
 

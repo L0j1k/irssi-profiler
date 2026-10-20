@@ -418,8 +418,9 @@ in front, as in `profiler_bad_evader`.
 - Port probing actively connects to the joiner's address. It's meant for a
   network you run, where the clients are yours. Scanning hosts you don't own
   or aren't authorised to test is a bad idea; `profiler_probe off` turns it off.
-  Banners are read passively: a service that doesn't speak first (plain HTTP)
-  opens with no banner.
+  Shared services aren't the person's own machine, so IRCCloud is never probed
+  and `notprobe <phrase>` lines skip more. Banners are read passively: a
+  service that doesn't speak first (plain HTTP) opens with no banner.
 - Profiles are keyed by nick. A variant nick gets its own profile from
   zero, and the variant search (above) is what connects it to the usual one.
 - The variant search only looks one nick change away, and only at nicks

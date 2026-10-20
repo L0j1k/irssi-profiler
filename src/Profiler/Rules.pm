@@ -10,6 +10,7 @@ use Profiler::Probe;
 #     <network> <channel[,channel...]> <min_trust>
 #     proxy <keyword or phrase>
 #     notproxy <phrase>
+#     notprobe <phrase>
 #     port <n[,n...]>
 #     proxyport <n[,n...]>
 #
@@ -19,14 +20,16 @@ use Profiler::Probe;
 # built-in list in Profiler::Whois. A notproxy line clears any record that has
 # the phrase, like a mobile carrier that runs on a cloud provider's addresses.
 # A port line replaces the default set of ports we knock on (Profiler::Probe);
-# a proxyport line adds to the ports that count as an open proxy. Lines starting
-# with "#" are comments.
+# a proxyport line adds to the ports that count as an open proxy. A notprobe
+# line names a host we never knock on, like a shared service, on top of the
+# built-in IRCCloud skip. Lines starting with "#" are comments.
 
 # Returns (\%rules, \@errors). Bad lines are skipped and described in @errors so
 # one typo does not throw away the rest of the file.
 sub parse {
     my (@lines) = @_;
-    my %rules = (watches => [], proxy_keywords => [], not_proxy => [], probe_ports => [], proxy_ports => []);
+    my %rules = (watches => [], proxy_keywords => [], not_proxy => [], not_probe => [],
+        probe_ports => [], proxy_ports => []);
     my @errors;
 
     my $n = 0;
@@ -34,10 +37,11 @@ sub parse {
         $n++;
         next if $line =~ /^\s*(#|$)/;
 
-        if ($line =~ /^\s*(proxy|notproxy)\b\s*(.*?)\s*$/i) {
+        if ($line =~ /^\s*(proxy|notproxy|notprobe)\b\s*(.*?)\s*$/i) {
             my ($kind, $phrase) = (lc $1, $2);
+            my %list = (proxy => 'proxy_keywords', notproxy => 'not_proxy', notprobe => 'not_probe');
             if (length $phrase) {
-                push @{ $rules{ $kind eq 'proxy' ? 'proxy_keywords' : 'not_proxy' } }, lc $phrase;
+                push @{ $rules{ $list{$kind} } }, lc $phrase;
             }
             else {
                 push @errors, "line $n: $kind needs a " . ($kind eq 'proxy' ? 'keyword' : 'phrase');

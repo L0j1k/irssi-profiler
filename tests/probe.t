@@ -50,6 +50,17 @@ subtest 'banner_text' => sub {
     is(Profiler::Probe::banner_text([ { port => 22, open => 1 } ]), undef, 'no banners is undef');
 };
 
+subtest 'skip_reason' => sub {
+    is(Profiler::Probe::skip_reason('id-325524.hampstead.irccloud.com', []), 'irccloud',
+        'IRCCloud hosts are never probed, it is not their machine');
+    is(Profiler::Probe::skip_reason('host.example.net', []), undef, 'an ordinary host is probed');
+    is(Profiler::Probe::skip_reason('shell.example.org', ['example.org']), 'example.org',
+        'a notprobe phrase matches by substring');
+    is(Profiler::Probe::skip_reason('SHELL.EXAMPLE.ORG', ['example.org']), 'example.org', 'case-insensitive');
+    is(Profiler::Probe::skip_reason('host.example.net', ['irccloud.com']), undef,
+        'no match when the phrase is absent');
+};
+
 subtest 'proxy_port_in' => sub {
     is(Profiler::Probe::proxy_port_in('22,443,9050', [9050, 1080]), 9050, 'tor socks found');
     is(Profiler::Probe::proxy_port_in('1080,3128', \@Profiler::Probe::DEFAULT_PROXY_PORTS), 1080,
