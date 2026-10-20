@@ -61,6 +61,18 @@ subtest 'a second install keeps only the newest backup' => sub {
     is read_file("$data/efnet.sqlite.old"), 'older still', 'a backup from before dated names left alone';
 };
 
+subtest 'installing the same import twice leaves the backup alone' => sub {
+    my ($tmp, $data) = setup();
+    write_file("$data/efnet.sqlite", 'old');
+    my ($status, $out) = run("--from '$tmp/build' EFNet '$tmp/irssi'");
+    is $status, 0, 'first install succeeds' or diag $out;
+    sleep 1;
+    ($status, $out) = run("--from '$tmp/build' EFNet '$tmp/irssi'");
+    is $status, 0, 'second install succeeds' or diag $out;
+    like $out, qr/already installed/, 'says there was nothing to do';
+    is_deeply [ map { read_file($_) } backups($data) ], [ 'old' ], 'backup from before the first install kept';
+};
+
 subtest 'refuses rather than overwrite a backup' => sub {
     my ($tmp, $data) = setup();
     write_file("$data/efnet.sqlite", 'old');

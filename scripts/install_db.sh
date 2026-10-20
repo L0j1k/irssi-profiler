@@ -78,6 +78,13 @@ if ! check_not_open "$dest" "$dest-wal" "$dest-shm"; then
     exit 1
 fi
 
+# Installing the same import again would back up the import and delete the
+# backup of the database from before it.
+if [[ -e "$dest" ]] && cmp -s "$src" "$dest"; then
+    echo "$src is already installed at $dest; nothing to do"
+    exit 0
+fi
+
 backup="$dest.$(date +%Y-%m-%d-%H%M%S).old"
 if [[ -e "$backup" ]]; then
     echo "$backup already exists; wait a second and run it again" >&2

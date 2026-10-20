@@ -45,9 +45,10 @@ been running all along.
 plain `cp` over an open database leaves irssi's write-ahead log beside the new
 file, and SQLite replays it into the new file, which corrupts it. The old
 database is kept as `efnet.sqlite.<date-time>.old`, and backups from earlier
-installs are deleted, since the databases are big. Installing the same import
-twice leaves you with a backup of that import, so copy a backup somewhere else
-first if you need it to survive.
+installs are deleted, since the databases are big. Installing an import
+that's already installed does nothing. Installing a different one deletes the
+previous backup, so copy a backup somewhere else first if you need it to
+survive.
 The import also records kicks and bans (see below). For a file imported
 before that, `scripts/backfill_marks.pl --logs ~/irclogs/EFNet
 ~/.irssi/scripts/profiler-data/efnet.sqlite` adds just those, and can run
