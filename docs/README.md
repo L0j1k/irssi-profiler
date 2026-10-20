@@ -44,7 +44,8 @@ been running all along.
 `install_db.sh` refuses to run while irssi still has the database open. A
 plain `cp` over an open database leaves irssi's write-ahead log beside the new
 file, and SQLite replays it into the new file, which corrupts it. The old
-database is kept as `efnet.sqlite.old`.
+database is kept as `efnet.sqlite.<date-time>.old`, a new one for every
+install, so nothing is ever overwritten. Delete old ones yourself.
 The import also records kicks and bans (see below). For a file imported
 before that, `scripts/backfill_marks.pl --logs ~/irclogs/EFNet
 ~/.irssi/scripts/profiler-data/efnet.sqlite` adds just those, and can run
