@@ -44,6 +44,7 @@ sub verdict_line {
     my $who = "$job->{nick} ($was$job->{ident}\@$job->{host}, client: $job->{version})$proxy";
     my $seen = $count ? "seen $count time(s) before" : 'never seen before';
     $seen .= ", judged on the latest $Profiler::Store::HISTORY_SIZE" if $count > $Profiler::Store::HISTORY_SIZE;
+    $seen .= "; ports open: $hostinfo->{ports}" if defined $hostinfo->{ports} && length $hostinfo->{ports};
     $seen .= '; changes nicks often, also ' . nick_list(@{ $ctx->{other_nicks} }) if @{ $ctx->{other_nicks} // [] };
     my $label = $ctx->{label};
     my $bad = $label && ($label->{label} eq 'bad' || $label->{label} eq 'conflicting');
@@ -63,6 +64,12 @@ sub verdict_line {
     # whole point: an established nick being worn by somebody else.
     if ($r->{verdict} eq 'suspect') {
         my $when = $job->{netsplit} ? ' during a netsplit rejoin' : '';
+        # An open proxy makes a join suspect whatever else matched, so it gets
+        # its own wording rather than claiming the history disagrees.
+        if ($r->{open_proxy}) {
+            return ('SUSPECT', "$who is connecting through an open proxy (port $r->{open_proxy})$when; $score, $seen$why. "
+                . "Quarantined; /profiler accept $job->{nick} if it's really them");
+        }
         my $isp = $r->{new_isp} ? ": from an ISP they've never used, $r->{new_isp}{isp}, usually $r->{new_isp}{usual}" : '';
         return ('SUSPECT', "$who doesn't match the history of $job->{nick}$when$isp; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");

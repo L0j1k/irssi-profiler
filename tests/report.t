@@ -151,6 +151,21 @@ subtest 'a suspect from a new ISP says which' => sub {
     like($text, qr/doesn't match the history of bob: from an ISP they've never used, telia\.it, usually myvzw\.com;/, $text);
 };
 
+subtest 'an open proxy port gets its own suspect wording' => sub {
+    my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', open_proxy => 9050 },
+        hostinfo => { ports => '22,9050' }) };
+    is($word, 'SUSPECT', 'a suspect');
+    like($text, qr/^bob .* is connecting through an open proxy \(port 9050\);/, $text);
+    like($text, qr/ports open: 22,9050/, 'and lists the open ports');
+};
+
+subtest 'open ports show on a line that is already shown' => sub {
+    my (undef, $text) = @{ line(\%consistent, verbose => 1, hostinfo => { ports => '22,6697' }) };
+    like($text, qr/; ports open: 22,6697/, $text);
+    (undef, $text) = @{ line(\%consistent, verbose => 1, hostinfo => { ports => '' }) };
+    unlike($text, qr/ports open/, 'nothing open adds no clause');
+};
+
 subtest 'a likely proxy they always use is not a warning' => sub {
     is_deeply(line({ %consistent, host_seen => 1 }, hostinfo => \%linode), [], 'a consistent join stays quiet');
     my ($word, $text) = @{ line({ %consistent, host_seen => 1 }, hostinfo => \%linode, verbose => 1) };

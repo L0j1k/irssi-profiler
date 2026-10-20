@@ -3,24 +3,30 @@ package Profiler::Rules;
 use strict;
 use warnings;
 
+use Profiler::Probe;
+
 # Rules file lines:
 #
 #     <network> <channel[,channel...]> <min_trust>
 #     proxy <keyword or phrase>
 #     notproxy <phrase>
+#     port <n[,n...]>
+#     proxyport <n[,n...]>
 #
 # A watch line asks for a warning when someone joins one of those channels with
 # trust under min_trust (0 to 1). "*" in the network or channel field means
 # "any". A proxy line adds a word to look for in whois records on top of the
 # built-in list in Profiler::Whois. A notproxy line clears any record that has
 # the phrase, like a mobile carrier that runs on a cloud provider's addresses.
-# Lines starting with "#" are comments.
+# A port line replaces the default set of ports we knock on (Profiler::Probe);
+# a proxyport line adds to the ports that count as an open proxy. Lines starting
+# with "#" are comments.
 
 # Returns (\%rules, \@errors). Bad lines are skipped and described in @errors so
 # one typo does not throw away the rest of the file.
 sub parse {
     my (@lines) = @_;
-    my %rules = (watches => [], proxy_keywords => [], not_proxy => []);
+    my %rules = (watches => [], proxy_keywords => [], not_proxy => [], probe_ports => [], proxy_ports => []);
     my @errors;
 
     my $n = 0;
@@ -35,6 +41,18 @@ sub parse {
             }
             else {
                 push @errors, "line $n: $kind needs a " . ($kind eq 'proxy' ? 'keyword' : 'phrase');
+            }
+            next;
+        }
+
+        if ($line =~ /^\s*(proxyport|port)\b\s*(.*?)\s*$/i) {
+            my ($kind, $value) = (lc $1, $2);
+            my @ports = Profiler::Probe::parse_ports($value);
+            if (@ports) {
+                push @{ $rules{ $kind eq 'port' ? 'probe_ports' : 'proxy_ports' } }, @ports;
+            }
+            else {
+                push @errors, "line $n: $kind needs one or more port numbers from 1 to 65535";
             }
             next;
         }

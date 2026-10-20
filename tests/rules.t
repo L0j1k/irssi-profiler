@@ -56,6 +56,19 @@ subtest 'notproxy lines' => sub {
     like($errors->[0], qr/^line 2: notproxy needs/, 'empty notproxy line is an error');
 };
 
+subtest 'port and proxyport lines' => sub {
+    my ($rules, $errors) = Profiler::Rules::parse(
+        "port 22,443 6697\n",
+        "proxyport 1080\n",
+        "proxyport 9050,9051\n",
+        "port nope\n",
+    );
+    is_deeply($rules->{probe_ports}, [22, 443, 6697], 'port replaces the probed set, parsed and sorted');
+    is_deeply($rules->{proxy_ports}, [1080, 9050, 9051], 'proxyport lines add up');
+    is(scalar @$errors, 1, 'a port line with no number is an error');
+    like($errors->[0], qr/^line 4: port needs/, 'error names the line');
+};
+
 subtest 'min_trust_for' => sub {
     my ($rules) = Profiler::Rules::parse(
         "efnet #chan,#other 0.6\n",

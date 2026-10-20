@@ -25,6 +25,7 @@ use Profiler::Evasion;
 use Profiler::Jupe;
 use Profiler::Label;
 use Profiler::Marks;
+use Profiler::Probe;
 use Profiler::Queue;
 use Profiler::Report;
 use Profiler::Rules;
@@ -182,6 +183,18 @@ sub open_store {
 
 sub proxy_keywords {
     return [ @Profiler::Whois::DEFAULT_PROXY_KEYWORDS, @{ $rules->{proxy_keywords} } ];
+}
+
+# The ports we knock on: the rules file's set if it named one, otherwise the
+# built-in default.
+sub probe_ports {
+    return @{ $rules->{probe_ports} } ? $rules->{probe_ports} : [ @Profiler::Probe::DEFAULT_PORTS ];
+}
+
+# The ports that count as an open proxy: the built-in list plus any the rules
+# file added.
+sub proxy_ports {
+    return [ @Profiler::Probe::DEFAULT_PROXY_PORTS, @{ $rules->{proxy_ports} } ];
 }
 
 sub queue_for {
@@ -368,6 +381,11 @@ sub look_up_host {
 
     my $keywords = proxy_keywords();
     my $timeout = Irssi::settings_get_int('profiler_lookup_timeout');
+    my $probe = Irssi::settings_get_bool('profiler_probe');
+    my $ports = probe_ports();
+    my $connect_timeout = Irssi::settings_get_int('profiler_probe_timeout');
+    my $banner_wait = Irssi::settings_get_int('profiler_probe_banner_wait');
+    my $banner_bytes = Irssi::settings_get_int('profiler_probe_banner_bytes');
     my ($reader, $writer);
     if (!pipe $reader, $writer) {
         info("cannot create pipe for host lookup: $!");
@@ -384,6 +402,13 @@ sub look_up_host {
     if ($pid == 0) {
         close $reader;
         my $res = Profiler::Whois::lookup($job->{host}, $keywords, $timeout, $rules->{not_proxy});
+        # Knock on the address whois just resolved. Even when whois itself timed
+        # out we may still have the address, so this goes by the address alone.
+        if ($probe && defined $res->{ip}) {
+            my $results = Profiler::Probe::probe($res->{ip}, $ports, $connect_timeout, $banner_wait, $banner_bytes);
+            $res->{ports} = Profiler::Probe::signature($results);
+            $res->{banners} = Profiler::Probe::banner_text($results);
+        }
         print $writer encode_json($res);
         close $writer;
         POSIX::_exit(0);
@@ -410,7 +435,9 @@ sub look_up_host {
 # leaves the store as it was.
 sub judge {
     my ($job, $hostinfo) = @_;
-    my $obs = { %$job, ip => $hostinfo->{ip}, proxy => $hostinfo->{proxy}, provider => Profiler::Whois::provider($hostinfo) };
+    my $obs = { %$job, ip => $hostinfo->{ip}, proxy => $hostinfo->{proxy}, provider => Profiler::Whois::provider($hostinfo),
+        ports => $hostinfo->{ports}, banners => $hostinfo->{banners},
+        open_proxy => Profiler::Probe::proxy_port_in($hostinfo->{ports}, proxy_ports()) };
     my $now = time;
     local $Profiler::Score::HALF_LIFE = 86400 * Irssi::settings_get_int('profiler_half_life_days');
     return judge_holder($job, $obs, $now) if defined $job->{jupe_of};
@@ -700,6 +727,10 @@ Irssi::settings_add_int('profiler', 'profiler_queue_max', 100);
 Irssi::settings_add_int('profiler', 'profiler_recheck', 600);
 Irssi::settings_add_int('profiler', 'profiler_hostinfo_max_age', 7 * 24 * 3600);
 Irssi::settings_add_int('profiler', 'profiler_lookup_timeout', 20);
+Irssi::settings_add_bool('profiler', 'profiler_probe', 1);
+Irssi::settings_add_int('profiler', 'profiler_probe_timeout', 3);
+Irssi::settings_add_int('profiler', 'profiler_probe_banner_wait', 2);
+Irssi::settings_add_int('profiler', 'profiler_probe_banner_bytes', 200);
 Irssi::settings_add_int('profiler', 'profiler_version_timeout', 10);
 Irssi::settings_add_int('profiler', 'profiler_whois_timeout', 60);
 Irssi::settings_add_int('profiler', 'profiler_half_life_days', 90);
