@@ -37,6 +37,12 @@ subtest 'someone labelled BAD always gets a line' => sub {
     is_deeply(line(\%consistent, label => { label => 'good', nick => 'bob' }), [], 'GOOD stays quiet');
 };
 
+subtest 'conflicting labels always get a line saying what they were' => sub {
+    my ($word, $text) = @{ line(\%consistent, label => { label => 'conflicting', nick => 'bob', own => 'good', bad => 'TrollGuy' }) };
+    is($word, 'CONFIDENT', 'with the usual word');
+    like($text, qr/; labelled GOOD as bob and BAD as TrollGuy$/, $text);
+};
+
 subtest 'under the minimum, thin history is unproven and anything against them is a warning' => sub {
     my ($word, $text) = @{ line({ %consistent, trust => 0.33, confidence => 0.57 }) };
     is($word, 'UNPROVEN', 'everything matches, there just is not much of it');

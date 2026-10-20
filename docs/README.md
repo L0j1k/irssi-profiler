@@ -335,15 +335,20 @@ label leads every line about that person's joins, as `-=( GOOD )=-` in
 green, `-=( NEUTRAL )=-` in white or `-=( BAD )=-` in red, and changes
 nothing else: the verdict, EVADER and the rest are worked out as usual.
 
-A label only shows when the join comes from a host the nick has used before
-(the same host, address or IRCCloud account), since without that it could be
-anyone wearing the nick. A nearby address or the same ISP isn't enough. So
-someone on a new dynamic address every time won't get theirs. BAD also
+A label only shows when the join comes from where the nick connects, since
+without that it could be anyone wearing the nick: the same host, address or
+IRCCloud account, or a nearby address or the same ISP with the ident they
+had there, like the next dynamic address from their provider. BAD also
 follows the person onto other nicks, matched the same way as EVADER, and the
-line ends with `labelled BAD as <nick>`. Someone labelled BAD always gets a
-line, even when they'd otherwise be quiet. A nick's own label comes first, so
-you can call someone NEUTRAL on the nick they use now even though one of
-their old nicks is BAD.
+line ends with `labelled BAD as <nick>`.
+
+When a join gets GOOD or NEUTRAL from its own nick but also looks like
+someone labelled BAD, it's `-=( CONFLICTING )=-` in orange (irssi's dark
+yellow), ending `labelled GOOD as bob and BAD as trolluser`. Maybe somebody
+sat on bob's nick from bob's ISP and copied his ident, or maybe a BAD label
+is out of date. The script can't tell, so sort it out from the logs and
+change the labels. BAD and CONFLICTING joins always get a line, even when
+they'd otherwise be quiet.
 
 Labels are kept by a rescore, but not by importing the logs again.
 

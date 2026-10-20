@@ -98,6 +98,9 @@ my %LABEL_COLOUR = (
     GOOD    => '%g',
     NEUTRAL => '%W',
     BAD     => '%r',
+    # irssi's 16 colours have no orange; dark yellow is the nearest, and
+    # shows as orange or brown in most terminals.
+    CONFLICTING => '%y',
 );
 
 sub word_format {

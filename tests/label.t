@@ -30,9 +30,12 @@ subtest 'a label shows when the join comes from a host the nick has used' => sub
     my $store = store_with();
     $store->set_label('efnet', 'bob', 'good', $NOW);
     is_deeply(label_for($store, { %bob, nick => 'bob' }), { label => 'good', nick => 'Bob' }, 'found');
-    is(label_for($store, { %bob, host => 'cpe-1-2-3-5.res.example.net' }), undef,
-        'not from a neighbouring address, since anyone at the ISP has one');
-    is(label_for($store, { %bob, host => 'elsewhere.example.org' }), undef, 'or somewhere else');
+    is(label_for($store, { %bob, host => 'cpe-9-8-7-6.res.example.net' })->{label}, 'good',
+        'and from another dynamic address at their ISP');
+    is(label_for($store, { %bob, host => 'cpe-9-8-7-6.res.example.net', ident => 'creep' }), undef,
+        'but not with another ident, since the ISP has plenty of other customers');
+    is(label_for($store, { %bob, ident => 'creep' })->{label}, 'good', 'their very own host is enough');
+    is(label_for($store, { %bob, host => 'elsewhere.example.org' }), undef, 'not somewhere else');
 };
 
 subtest 'a held join from a host does not make it theirs' => sub {
@@ -71,13 +74,15 @@ subtest 'GOOD and NEUTRAL stay with the nick' => sub {
     is(label_for($store, { %troll, nick => 'n3wguy' }), undef, 'NEUTRAL');
 };
 
-subtest "the nick's own label comes first" => sub {
+subtest 'a nick labelled one way that looks like someone BAD is CONFLICTING' => sub {
     my $store = store_with();
     $store->set_label('efnet', 'trollguy', 'bad', $NOW);
     $store->record('efnet', { %troll, nick => 'n3wguy' }, $NOW - $_ * $DAY, 'consistent') for 2 .. 5;
-    $store->set_label('efnet', 'n3wguy', 'neutral', $NOW);
-    is_deeply(label_for($store, { %troll, nick => 'n3wguy' }), { label => 'neutral', nick => 'n3wguy' },
-        'NEUTRAL on their nick, though they were BAD as someone else');
+    $store->set_label('efnet', 'n3wguy', 'good', $NOW);
+    is_deeply(label_for($store, { %troll, nick => 'n3wguy' }),
+        { label => 'conflicting', nick => 'n3wguy', own => 'good', bad => 'TrollGuy' }, 'with both labels');
+    $store->set_label('efnet', 'n3wguy', 'bad', $NOW);
+    is(label_for($store, { %troll, nick => 'n3wguy' })->{label}, 'bad', 'BAD and BAD agree');
 };
 
 subtest 'nobody labelled' => sub {

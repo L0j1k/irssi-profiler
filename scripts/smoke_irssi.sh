@@ -174,6 +174,9 @@ wait_for 'smokeregular on efnet is GOOD now' || fail "/profiler good did not say
 wait_for 'profiler: -=\( GOOD \)=- CONFIDENT smokeregular' || fail "a GOOD nick's line has no label"
 tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::cmd_profiler('bad smokeregular', bless({ tag => 'efnet' }, 'SmokeServer')); $(judge_as smokebadnick)" Enter
 wait_for 'profiler: -=\( BAD \)=- UNKNOWN smokebadnick .*labelled BAD as smokeregular' || fail "BAD did not follow them onto another nick"
+tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::cmd_profiler('good smokebadnick', bless({ tag => 'efnet' }, 'SmokeServer')); $(judge_as smokebadnick)" Enter
+wait_for 'profiler: -=\( CONFLICTING \)=- .*smokebadnick .*labelled GOOD as smokebadnick and BAD as' \
+    || fail "a GOOD nick that looks like someone BAD is not CONFLICTING"
 tmux send-keys -t "$session" "/script exec Irssi::Script::profiler::cmd_profiler('unlabel smokeregular', bless({ tag => 'efnet' }, 'SmokeServer'))" Enter
 wait_for 'smokeregular on efnet has no label now' || fail "/profiler unlabel did not take the label away"
 

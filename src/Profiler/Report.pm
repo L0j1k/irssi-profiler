@@ -27,8 +27,8 @@ our $NICKS_SHOWN = 3;
 #   hostinfo     the host lookup, with proxy set on a likely proxy
 #   marks        the nick's kicks and bans, when they still count
 #                (Profiler::Marks::counts), which always gets the line shown
-#   label        the join's label from Profiler::Label::for_join; BAD always
-#                gets the line shown
+#   label        the join's label from Profiler::Label::for_join; BAD and
+#                CONFLICTING always get the line shown
 sub verdict_line {
     my ($job, $r, $ctx) = @_;
     my $hostinfo = $ctx->{hostinfo} // {};
@@ -46,8 +46,13 @@ sub verdict_line {
     $seen .= ", judged on the latest $Profiler::Store::HISTORY_SIZE" if $count > $Profiler::Store::HISTORY_SIZE;
     $seen .= '; changes nicks often, also ' . nick_list(@{ $ctx->{other_nicks} }) if @{ $ctx->{other_nicks} // [] };
     my $label = $ctx->{label};
-    my $bad = $label && $label->{label} eq 'bad';
-    $seen .= '; labelled ' . uc($label->{label}) . " as $label->{nick}" if $label && lc $label->{nick} ne lc $job->{nick};
+    my $bad = $label && ($label->{label} eq 'bad' || $label->{label} eq 'conflicting');
+    if ($label && $label->{label} eq 'conflicting') {
+        $seen .= '; labelled ' . uc($label->{own}) . " as $label->{nick} and BAD as $label->{bad}";
+    }
+    elsif ($label && lc $label->{nick} ne lc $job->{nick}) {
+        $seen .= '; labelled ' . uc($label->{label}) . " as $label->{nick}";
+    }
     my $min = $ctx->{min} // 0;
     my $score = sprintf('trust %+.2f (%s, match %+.2f, confidence %.2f)',
         @$r{qw(trust verdict match confidence)});
