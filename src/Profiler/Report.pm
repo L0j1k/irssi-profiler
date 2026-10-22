@@ -71,7 +71,12 @@ sub verdict_line {
                 . "Quarantined; /profiler accept $job->{nick} if it's really them");
         }
         my $isp = $r->{new_isp} ? ": from an ISP they've never used, $r->{new_isp}{isp}, usually $r->{new_isp}{usual}" : '';
-        return ('SUSPECT', "$who doesn't match the history of $job->{nick}$when$isp; $score, $seen$why. "
+        # A clash in who they are, their ident, realname or client, is the
+        # serious case, someone wearing the nick, so it gets the red WARNING. A
+        # suspect that's only about where they come from, a new ISP, is the
+        # quieter orange SUSPECT.
+        return ($r->{match} < 0 ? 'WARNING' : 'SUSPECT',
+            "$who doesn't match the history of $job->{nick}$when$isp; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");
     }
     # Too little recent history to judge, but what there is disagrees, which
@@ -81,11 +86,12 @@ sub verdict_line {
         return ('WARNING', "$who doesn't match what little is left of $job->{nick}'s history; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");
     }
-    # A likely proxy the nick hasn't been on before is worth a warning even
-    # from someone we know, so it takes over whichever quieter word the join
-    # would have had. One they're always on is probably their own server,
-    # and another address from a VPN provider they use is just a new exit.
-    my $word = $proxy && !$r->{host_seen} && !$r->{provider_seen} ? 'WARNING' : undef;
+    # A likely proxy the nick hasn't been on before is worth flagging even from
+    # someone we know, so it takes over whichever quieter word the join would
+    # have had. It's only where they come from, not who they are, so it's the
+    # orange SUSPECT, not a warning. One they're always on is probably their own
+    # server, and another address from a VPN provider they use is just a new exit.
+    my $word = $proxy && !$r->{host_seen} && !$r->{provider_seen} ? 'SUSPECT' : undef;
     # Same person by everything but the host, most likely. A quiet note
     # rather than a warning, so SUSPECT keeps meaning something.
     if ($r->{verdict} eq 'new host') {

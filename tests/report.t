@@ -66,27 +66,27 @@ subtest 'an unknown join that disagrees with old history says it is held' => sub
         parts => { host => -1, ident => 1 } }), [], 'and so is only a new host, like a dynamic IP');
 };
 
-subtest 'a likely proxy is one warning line, whatever the verdict' => sub {
+subtest 'a likely proxy is one line, whatever the verdict' => sub {
     my $proxy = qr/on a likely VPN, proxy or hosting address \(192\.0\.2\.95, Linode, matched 'linode'\)/;
 
     my $lines = line(\%consistent, hostinfo => \%linode);
     is(scalar @$lines, 2, 'one line') or return;
-    is($lines->[0], 'WARNING', 'a warning');
+    is($lines->[0], 'SUSPECT', 'a new proxy exit is suspect, just where from, not a warning');
     like($lines->[1], $proxy, 'says why');
     like($lines->[1], qr/trust \+0\.90 \(consistent/, 'and still gives the verdict');
 
     my ($word, $text) = @{ line({ %consistent, trust => 0.4 }, hostinfo => \%linode) };
-    is($word, 'WARNING', 'under the minimum too');
+    is($word, 'SUSPECT', 'under the minimum too');
     like($text, qr/under 0\.5/, 'says it is under the minimum');
     like($text, $proxy, 'and on a proxy');
 
     ($word, $text) = @{ line({ %consistent, verdict => 'suspect', match => -0.3 }, hostinfo => \%linode) };
-    is($word, 'SUSPECT', 'a suspect stays a suspect');
+    is($word, 'WARNING', 'a clash in who they are is a warning, even on a proxy');
     like($text, $proxy, 'on a proxy');
 
     ($word, $text) = @{ line({ %consistent, verdict => 'new host', parts => { host => -0.5, ident => 0.9 } },
         hostinfo => \%linode) };
-    is($word, 'WARNING', 'a new host on a proxy is a warning');
+    is($word, 'SUSPECT', 'a new host on a proxy is suspect');
     like($text, qr/ident matches/, 'still says what matches');
     like($text, $proxy, 'and why');
 };
@@ -147,8 +147,15 @@ subtest 'a move says which held joins now count' => sub {
 
 subtest 'a suspect from a new ISP says which' => sub {
     my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', new_isp => { isp => 'telia.it', usual => 'myvzw.com' } }) };
-    is($word, 'SUSPECT', 'a suspect');
+    is($word, 'SUSPECT', 'everything fits but the ISP, just where from, so orange');
     like($text, qr/doesn't match the history of bob: from an ISP they've never used, telia\.it, usually myvzw\.com;/, $text);
+};
+
+subtest 'a clash in who they are is a warning, not just a suspect' => sub {
+    my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', match => -0.6,
+        parts => { ident => -1, realname => -0.8 } }) };
+    is($word, 'WARNING', 'ident and realname disagree, someone wearing the nick');
+    like($text, qr/doesn't match the history of bob.*Quarantined/s, $text);
 };
 
 subtest 'an open proxy port gets its own suspect wording' => sub {

@@ -192,16 +192,19 @@ trust under 0.5 anyway. The verdict is:
   for almost nothing.
 - **suspect:** match below 0, with at least one of host, ident, realname or
   client contradicting. If only channel or server disagree, it's mixed
-  instead. Suspects are always warned about, whatever the rules say. The
+  instead. That's someone wearing the nick, so the line leads with the red
+  WARNING. Suspects are always shown, whatever the rules say. The
   sighting is quarantined: kept, but left out of the history, so an
-  impostor can't train the profile. The warning notes it if the join came
+  impostor can't train the profile. The line notes it if the join came
   during a netsplit rejoin.
 
   A join from an ISP-generated name is also suspect, however well the rest
   matches, when the nick has used ISPs before but never this one (the ISP
   is the registered domain, like `myvzw.com` or `telia.it`). People stick
   with their home and mobile ISPs, so a new one is what a residential proxy
-  network looks like. The warning says `from an ISP they've never used,
+  network looks like. This one is only about where they connect from, not
+  who they are, so it leads with the quieter orange SUSPECT, and the line
+  says `from an ISP they've never used,
   telia.it, usually myvzw.com`. Bare addresses work the same way with
   their provider, once the nick has live sightings with providers. A
   domain is only compared with a domain and a provider with a provider,
@@ -374,11 +377,11 @@ someone starts with a one-word summary in its own colour:
 
 | word      | colour        | means |
 |-----------|---------------|-------|
-| WARNING   | bright red    | under the channel's min_trust with something against them, or on a likely proxy that's new for them |
+| WARNING   | bright red    | the nick's history contradicts who they are (ident, realname or client), or under the channel's min_trust with something against them |
 | EVADER    | bright red    | looks like someone who was kicked or banned, under another nick |
 | JUPER     | purple        | sitting on a nick its owner is waiting for, or looks like someone caught doing that |
 | UNPROVEN  | bright purple | under the channel's min_trust, but everything matches: just not much history yet |
-| SUSPECT   | bright yellow | doesn't match the nick's history |
+| SUSPECT   | bright yellow | connecting from somewhere new for them: a likely proxy, an open proxy port, or an ISP they've never used |
 | MIXED     | bright cyan   | partly matches |
 | CONFIDENT | bright green  | consistent with the nick's history |
 | NEW HOST  | grey          | only the host is new |
@@ -390,11 +393,12 @@ CONFIDENT, MIXED and UNKNOWN lines show with `profiler_verbose` on, or for
 a nick change. A nick never seen before joining from a bare address (no
 reverse DNS) always gets an UNKNOWN line saying so, since that's how a lot
 of trolls on proxies turn up. A join from a likely proxy the nick hasn't been seen on
-before always gets one line. It says WARNING in place of any word but
-SUSPECT, and still gives the verdict. A proxy they're always on is probably
-their own server, so it's treated like any other host. A new address from a
-provider they've used before, like another exit of their VPN, isn't a
-warning either, but the line still says it's a likely proxy, adding "a
+before always gets one line. It says SUSPECT in place of any quieter word,
+and still gives the verdict, since a new exit is only where they come from.
+An identity clash still leads with WARNING. A proxy they're always on is
+probably their own server, so it's treated like any other host. A new
+address from a provider they've used before, like another exit of their VPN,
+isn't flagged either, but the line still says it's a likely proxy, adding "a
 provider they've used before". To change a colour, override the format in your theme, for
 example:
 
