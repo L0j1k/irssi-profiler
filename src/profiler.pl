@@ -122,12 +122,12 @@ my %ONE_WORD = (%WORD_COLOUR, %VARIANT_COLOUR, %LABEL_COLOUR);
 my @words = ((map { [$_] } sort keys %WORD_COLOUR, sort keys %VARIANT_COLOUR),
     map { my $word = $_; map { [ $word, $_ ] } sort keys %VARIANT_COLOUR } sort keys %WORD_COLOUR);
 Irssi::theme_register([
-    profiler_line => '{channick profiler: $0}',
+    profiler_line => '{channick profiler:} %K$0%n',
     map {
         my $words = $_;
         map {
             my @lead = (@$_, @$words);
-            word_format(@lead) => '{channick profiler:} ' . join(' ', map { coloured($_, $ONE_WORD{$_}) } @lead) . ' {channick $0}'
+            word_format(@lead) => '{channick profiler:} ' . join(' ', map { coloured($_, $ONE_WORD{$_}) } @lead) . ' %K$0%n'
         } [], map { [$_] } sort keys %LABEL_COLOUR
     } @words,
 ]);
