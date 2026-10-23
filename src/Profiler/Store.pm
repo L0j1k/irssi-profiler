@@ -273,6 +273,37 @@ sub record {
     return $p;
 }
 
+# Fields /profiler query can search: the nick and the observation columns.
+our @SEARCHABLE = ('nick', @FIELDS);
+
+# Turns a shell-style glob (* and ?) into a SQL LIKE pattern. The LIKE
+# wildcards and the escape character in the glob are escaped first, so only
+# the * and ? the user typed act as wildcards.
+sub glob_to_like {
+    my ($glob) = @_;
+    (my $like = $glob) =~ s/([\\%_])/\\$1/g;
+    $like =~ s/\*/%/g;
+    $like =~ s/\?/_/g;
+    return $like;
+}
+
+# Sightings whose $field matches the glob $pattern, newest first, each as
+# { nick => ..., sighting => ... }, like suspects(). Matching is
+# case-insensitive (SQLite LIKE). Returns ($total, @rows): @rows is capped at
+# $limit, $total is how many matched in all. Dies if $field isn't searchable.
+sub search {
+    my ($self, $network, $field, $pattern, $limit) = @_;
+    die "can't search '$field'; try one of: @SEARCHABLE\n" unless grep { $_ eq $field } @SEARCHABLE;
+    my $dbh = $self->db($network) or return (0);
+    # $field is from the whitelist above, so it's safe to put in the SQL.
+    my $where = "$field LIKE ? ESCAPE '\\'";
+    my $like = glob_to_like($pattern);
+    my ($total) = $dbh->selectrow_array("SELECT COUNT(*) FROM sightings WHERE $where", undef, $like);
+    my $rows = $dbh->selectall_arrayref("SELECT * FROM sightings WHERE $where ORDER BY time DESC, id DESC LIMIT ?",
+        { Slice => {} }, $like, $limit);
+    return ($total, map { my $nick = $_->{nick}; { nick => $nick, sighting => sighting_from_row($_) } } @$rows);
+}
+
 # Quarantined sightings nobody has looked at yet, oldest first, each as
 # { nick => ..., sighting => ... }.
 sub suspects {

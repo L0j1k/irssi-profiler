@@ -353,4 +353,49 @@ subtest 'a corrupt file is reported and never overwritten' => sub {
     like(scalar <$fh>, qr/^not a database/, 'file untouched');
 };
 
+subtest 'searching sightings by a field with a glob' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->record('efnet', { %obs, nick => 'bob', version => 'HexChat 2.16.2' }, 1000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'ann', version => 'HexChat 2.16.2 / Linux' }, 2000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'cy', version => 'irssi v1.4.5' }, 3000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'dot', version => undef }, 4000, 'unknown');
+    $store->flush;
+
+    my ($total, @found) = reopened($dir)->search('efnet', 'version', '*HexChat 2.16.2*', 100);
+    is($total, 2, 'two versions contain the string');
+    is_deeply([ map { $_->{nick} } @found ], [qw(ann bob)], 'newest first, and nothing without the string');
+    is($found[0]{sighting}{version}, 'HexChat 2.16.2 / Linux', 'the matched value comes back');
+
+    ($total) = reopened($dir)->search('efnet', 'version', 'hexchat*', 100);
+    is($total, 2, 'matching is case-insensitive');
+
+    ($total) = reopened($dir)->search('efnet', 'version', 'irssi v1.4.5', 100);
+    is($total, 1, 'no wildcards means an exact match');
+
+    (undef, @found) = reopened($dir)->search('efnet', 'nick', 'a*', 100);
+    is_deeply([ map { $_->{nick} } @found ], ['ann'], 'can search the nick too');
+
+    ($total, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1);
+    is($total, 2, 'total counts every match');
+    is(scalar @found, 1, 'but the rows are capped at the limit');
+
+    eval { reopened($dir)->search('efnet', 'quarantined', '*', 100) };
+    like($@, qr/can't search 'quarantined'/, 'only whitelisted fields are searchable');
+};
+
+subtest 'a glob with LIKE specials in it matches them literally' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->record('efnet', { %obs, nick => 'pc', version => '100% real mIRC' }, 1000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'us', version => 'a_b client' }, 2000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'no', version => 'axb client' }, 3000, 'consistent');
+    $store->flush;
+
+    my ($total) = reopened($dir)->search('efnet', 'version', '*100%*', 100);
+    is($total, 1, 'a literal percent is not a wildcard');
+    ($total) = reopened($dir)->search('efnet', 'version', 'a_b*', 100);
+    is($total, 1, 'nor is a literal underscore');
+};
+
 done_testing;

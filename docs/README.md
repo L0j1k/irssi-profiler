@@ -20,6 +20,7 @@ editing.
 
 Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
 `/profiler nicks <nick>`, `/profiler judge <nick>`, `/profiler suspects`,
+`/profiler query <field> <pattern>`,
 `/profiler accept <nick>`, `/profiler reject <nick>`, `/profiler good <nick>`,
 `/profiler neutral <nick>`, `/profiler bad <nick>`,
 `/profiler unlabel <nick>`. `/profiler -h` says
@@ -30,6 +31,17 @@ same coloured word, but records nothing. It sends them a CTCP VERSION, as a
 join does. `/profiler
 nicks` lists everything behind "changes nicks often, also ... and 8 more",
 with when they first and last switched.
+
+`/profiler query` searches every sighting ever recorded on the active
+network for one whose field matches a glob, where `*` is any run of
+characters and `?` is one, like a shell. For example `/profiler query
+version '*HexChat 2.16.2*'` lists every CTCP VERSION reply that contained
+that string, newest first, each with when it was seen, the nick, channel,
+and ident@host. Matching ignores case. The fields are `nick`, `host`, `ip`,
+`ident`, `realname`, `server`, `version`, `channel`, `proxy`, `provider`,
+`ports` and `banners`. The pattern is the rest of the line, so it can hold
+spaces; a surrounding pair of quotes is dropped. A broad pattern prints at
+most the newest 100 and says how many matched in all.
 
 ## Starting from your logs
 

@@ -68,6 +68,10 @@ my %pending;
 # out of a channel is neither whois'ed again nor counted again for a while.
 my %recent;
 
+# Most sightings /profiler query prints, newest first, so a broad pattern
+# doesn't flood the window. It says the total when there are more.
+my $QUERY_LIMIT = 100;
+
 # Our lines are drawn like a nick that parts or quits, so they stand out from
 # the channel without shouting. Going through the theme keeps them in step
 # with whatever colours the user has, and keeps % in the text literal. A line
@@ -704,6 +708,26 @@ sub cmd_profiler {
                 $s->{channel} // '?', $s->{ident} // '?', $s->{host} // '?', $s->{version} // '?'));
         }
     }
+    elsif ($subcmd eq 'query') {
+        return info("/profiler query needs an active server") unless $server;
+        # query <field> <pattern>. The pattern is the rest of the line, so it
+        # can hold spaces; a surrounding pair of quotes is stripped for the
+        # common /profiler query version '*HexChat 2.16.2*'.
+        my ($field, $pattern) = $data =~ /^\s*\S+\s+(\S+)\s+(.*\S)/;
+        return info("usage: /profiler query <field> <pattern>, e.g. /profiler query version '*HexChat 2.16.2*'")
+            unless defined $pattern;
+        $pattern =~ s/^(['"])(.*)\1$/$2/;
+        my ($total, @found) = eval { $store->search($server->{tag}, lc $field, $pattern, $QUERY_LIMIT) };
+        return info($@) if $@;
+        return info("no sightings on $server->{tag} where $field matches '$pattern'") unless $total;
+        info("$total sighting(s) on $server->{tag} where $field matches '$pattern'"
+            . (@found < $total ? ", newest $QUERY_LIMIT:" : ':'));
+        for my $f (@found) {
+            my $s = $f->{sighting};
+            info(sprintf('%s  %s in %s as %s@%s; %s: %s', scalar localtime($s->{time}), $f->{nick},
+                $s->{channel} // '?', $s->{ident} // '?', $s->{host} // '?', lc $field, $s->{ lc $field } // '?'));
+        }
+    }
     elsif ((grep { $subcmd eq $_ } @Profiler::Label::LABELS, 'unlabel') && length $arg) {
         return info("/profiler $subcmd needs an active server") unless $server;
         my $label = $subcmd eq 'unlabel' ? undef : $subcmd;
@@ -747,6 +771,11 @@ usage: /profiler [-h] [command]
   judge <nick>     judge someone already here as if they just joined,
                    without recording it (they get a CTCP VERSION, as on a join)
   suspects         quarantined sightings waiting for a look
+  query <field> <pattern>
+                   every sighting whose field matches a glob (* and ?), e.g.
+                   query version '*HexChat 2.16.2*'. Fields: nick, host, ip,
+                   ident, realname, server, version, channel, proxy, provider,
+                   ports, banners
   accept <nick>    let a nick's quarantined sightings count
   reject <nick>    file a nick's quarantined sightings away
   good <nick>      label a nick GOOD, NEUTRAL or BAD; it leads every line
