@@ -289,18 +289,20 @@ sub glob_to_like {
 
 # Sightings whose $field matches the glob $pattern, newest first, each as
 # { nick => ..., sighting => ... }, like suspects(). Matching is
-# case-insensitive (SQLite LIKE). Returns ($total, @rows): @rows is capped at
-# $limit, $total is how many matched in all. Dies if $field isn't searchable.
+# case-insensitive (SQLite LIKE). Returns ($total, @rows): $total is how many
+# matched in all, and @rows is one page of at most $limit of them, skipping
+# the first $offset, for paging through a big result. Dies if $field isn't
+# searchable.
 sub search {
-    my ($self, $network, $field, $pattern, $limit) = @_;
+    my ($self, $network, $field, $pattern, $limit, $offset) = @_;
     die "can't search '$field'; try one of: @SEARCHABLE\n" unless grep { $_ eq $field } @SEARCHABLE;
     my $dbh = $self->db($network) or return (0);
     # $field is from the whitelist above, so it's safe to put in the SQL.
     my $where = "$field LIKE ? ESCAPE '\\'";
     my $like = glob_to_like($pattern);
     my ($total) = $dbh->selectrow_array("SELECT COUNT(*) FROM sightings WHERE $where", undef, $like);
-    my $rows = $dbh->selectall_arrayref("SELECT * FROM sightings WHERE $where ORDER BY time DESC, id DESC LIMIT ?",
-        { Slice => {} }, $like, $limit);
+    my $rows = $dbh->selectall_arrayref("SELECT * FROM sightings WHERE $where ORDER BY time DESC, id DESC LIMIT ? OFFSET ?",
+        { Slice => {} }, $like, $limit, $offset // 0);
     return ($total, map { my $nick = $_->{nick}; { nick => $nick, sighting => sighting_from_row($_) } } @$rows);
 }
 

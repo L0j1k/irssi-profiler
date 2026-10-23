@@ -376,9 +376,14 @@ subtest 'searching sightings by a field with a glob' => sub {
     (undef, @found) = reopened($dir)->search('efnet', 'nick', 'a*', 100);
     is_deeply([ map { $_->{nick} } @found ], ['ann'], 'can search the nick too');
 
-    ($total, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1);
+    ($total, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1, 0);
     is($total, 2, 'total counts every match');
     is(scalar @found, 1, 'but the rows are capped at the limit');
+    is($found[0]{nick}, 'ann', 'first page is the newest');
+    (undef, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1, 1);
+    is_deeply([ map { $_->{nick} } @found ], ['bob'], 'the offset pages past it');
+    (undef, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1, 2);
+    is_deeply(\@found, [], 'past the end is empty');
 
     eval { reopened($dir)->search('efnet', 'quarantined', '*', 100) };
     like($@, qr/can't search 'quarantined'/, 'only whitelisted fields are searchable');

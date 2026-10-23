@@ -68,9 +68,10 @@ my %pending;
 # out of a channel is neither whois'ed again nor counted again for a while.
 my %recent;
 
-# Most sightings /profiler query prints, newest first, so a broad pattern
-# doesn't flood the window. It says the total when there are more.
-my $QUERY_LIMIT = 100;
+# How many sightings /profiler query prints per page, newest first, so a broad
+# pattern doesn't flood the window. It says the total and how many pages there
+# are, and takes a page number to see the rest.
+my $QUERY_PAGE = 25;
 
 # Our lines are drawn like a nick that parts or quits, so they stand out from
 # the channel without shouting. Going through the theme keeps them in step
@@ -710,18 +711,32 @@ sub cmd_profiler {
     }
     elsif ($subcmd eq 'query') {
         return info("/profiler query needs an active server") unless $server;
-        # query <field> <pattern>. The pattern is the rest of the line, so it
-        # can hold spaces; a surrounding pair of quotes is stripped for the
-        # common /profiler query version '*HexChat 2.16.2*'.
-        my ($field, $pattern) = $data =~ /^\s*\S+\s+(\S+)\s+(.*\S)/;
-        return info("usage: /profiler query <field> <pattern>, e.g. /profiler query version '*HexChat 2.16.2*'")
-            unless defined $pattern;
-        $pattern =~ s/^(['"])(.*)\1$/$2/;
-        my ($total, @found) = eval { $store->search($server->{tag}, lc $field, $pattern, $QUERY_LIMIT) };
+        # query <field> <pattern> [page]. The pattern is the rest of the line
+        # (so it can hold spaces), with an optional page number after it. A
+        # surrounding pair of quotes is stripped, as in the common
+        # /profiler query version '*HexChat 2.16.2*'. Without quotes, a trailing
+        # number is taken as the page, so quote a pattern that ends in one.
+        my ($field, $rest) = $data =~ /^\s*\S+\s+(\S+)\s+(.*\S)/;
+        return info("usage: /profiler query <field> <pattern> [page], e.g. /profiler query version '*HexChat 2.16.2*'")
+            unless defined $rest;
+        my ($pattern, $page);
+        if ($rest =~ /^(['"])(.*)\1(?:\s+(\d+))?\s*$/) { ($pattern, $page) = ($2, $3); }
+        elsif ($rest =~ /^(.*\S)\s+(\d+)\s*$/)         { ($pattern, $page) = ($1, $2); }
+        else                                           { $pattern = $rest; }
+        $page = 1 if !$page || $page < 1;
+
+        my ($total, @found) = eval {
+            $store->search($server->{tag}, lc $field, $pattern, $QUERY_PAGE, ($page - 1) * $QUERY_PAGE)
+        };
         return info($@) if $@;
         return info("no sightings on $server->{tag} where $field matches '$pattern'") unless $total;
-        info("$total sighting(s) on $server->{tag} where $field matches '$pattern'"
-            . (@found < $total ? ", newest $QUERY_LIMIT:" : ':'));
+
+        my $pages = int(($total + $QUERY_PAGE - 1) / $QUERY_PAGE);
+        return info("$total sighting(s) where $field matches '$pattern': only $pages page(s)") if $page > $pages;
+        my $first = ($page - 1) * $QUERY_PAGE + 1;
+        info("$total sighting(s) on $server->{tag} where $field matches '$pattern'; showing $first-"
+            . ($first + $#found) . ", page $page of $pages"
+            . ($pages > 1 ? ". /profiler query <field> <pattern> <page> for more" : ''));
         for my $f (@found) {
             my $s = $f->{sighting};
             info(sprintf('%s  %s in %s as %s@%s; %s: %s', scalar localtime($s->{time}), $f->{nick},
@@ -771,11 +786,12 @@ usage: /profiler [-h] [command]
   judge <nick>     judge someone already here as if they just joined,
                    without recording it (they get a CTCP VERSION, as on a join)
   suspects         quarantined sightings waiting for a look
-  query <field> <pattern>
-                   every sighting whose field matches a glob (* and ?), e.g.
-                   query version '*HexChat 2.16.2*'. Fields: nick, host, ip,
-                   ident, realname, server, version, channel, proxy, provider,
-                   ports, banners
+  query <field> <pattern> [page]
+                   every sighting whose field matches a glob (* and ?), newest
+                   first, e.g. query version '*HexChat 2.16.2*'. Shows 25 per
+                   page and the total; add a page number for the rest. Fields:
+                   nick, host, ip, ident, realname, server, version, channel,
+                   proxy, provider, ports, banners
   accept <nick>    let a nick's quarantined sightings count
   reject <nick>    file a nick's quarantined sightings away
   good <nick>      label a nick GOOD, NEUTRAL or BAD; it leads every line
