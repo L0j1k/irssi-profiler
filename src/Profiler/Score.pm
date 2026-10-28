@@ -89,6 +89,10 @@ our $HOST_CHANGES_OFTEN_AT = 0.25;
 # from (host, server) or what they happen to be doing (channel).
 my @IDENTITY_ATTRS = qw(ident realname version);
 
+# Signals faint enough that a mismatch nudges the score but shouldn't raise a
+# warning on its own. The server someone connects through changes constantly.
+my @FAINT_ATTRS = qw(server);
+
 my %PREFIX = (4 => 24, 6 => 64);
 
 sub familiarity {
@@ -159,6 +163,16 @@ sub held {
 sub identity_contradicted {
     my ($parts) = @_;
     return any { ($parts->{$_} // 0) < 0 } @IDENTITY_ATTRS;
+}
+
+# Is anything that isn't a faint signal scoring against them? This is what
+# turns a thin, under-the-minimum join from a quiet "unproven" into a warning:
+# a newcomer we've barely seen is fine, but one with a real signal disagreeing
+# could be a troll on the nick. A faint signal like the server doesn't count.
+sub against {
+    my ($parts) = @_;
+    my %faint = map { $_ => 1 } @FAINT_ATTRS;
+    return any { !$faint{$_} && ($parts->{$_} // 0) < 0 } keys %$parts;
 }
 
 # Sightings that count: everything except what was quarantined as suspect.

@@ -52,6 +52,10 @@ subtest 'under the minimum, thin history is unproven and anything against them i
         parts => { host => -0.8, ident => 0.9, channel => -1 } }) };
     is($word, 'WARNING', 'something counts against them');
     like($text, qr/\[channel=-1\.00 host=-0\.80 ident=\+0\.90\]/, 'and the parts say what');
+
+    ($word) = @{ line({ %consistent, trust => 0.4, match => 0.6,
+        parts => { host => 0.9, ident => 1, server => -0.5 } }) };
+    is($word, 'UNPROVEN', 'a faint server mismatch alone is not enough to warn');
 };
 
 subtest 'an unknown join that disagrees with old history says it is held' => sub {

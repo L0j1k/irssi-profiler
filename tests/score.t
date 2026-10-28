@@ -70,6 +70,12 @@ subtest 'the server someone connects through is only a faint signal' => sub {
     ok($full - $r->{match} < 0.03, "but it moves the match very little ($full vs $r->{match})");
 };
 
+subtest 'a faint signal is not counted as something against them' => sub {
+    ok(!Profiler::Score::against({ host => 1, ident => 1, server => -1 }), 'a server mismatch alone is not');
+    ok(Profiler::Score::against({ host => -0.5, server => 1 }), 'but a weightier mismatch is');
+    ok(!Profiler::Score::against({ host => 1, ident => 1 }), 'and a clean join has nothing against it');
+};
+
 subtest 'channel names match whatever their case' => sub {
     # The store keeps channels lowercased, and joins arrive as typed.
     my $r = judge(profile_of(10), { %bob, channel => '#CHAN' });

@@ -103,7 +103,7 @@ sub verdict_line {
     # seen much of, like a newcomer. Anything that disagrees could be a
     # troll on the nick, which is what WARNING is for.
     if (Profiler::Rules::below_minimum($r, $min)) {
-        my $against = grep { $_ < 0 } values %{ $r->{parts} };
+        my $against = Profiler::Score::against($r->{parts});
         return ($against ? 'WARNING' : $word // 'UNPROVEN', "$who has $score, under $min; $seen$why");
     }
     # A nick nobody has seen, on an address without a name, is how a lot of
