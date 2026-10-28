@@ -263,6 +263,14 @@ really did move), and `/profiler reject <nick>` files them away.
 
 ## Nick variants
 
+A joiner is judged on their nick pooled with the nicks they've switched to or
+from with /nick (see Linked nicks below): bob, bob_ and bob__ are one
+person's history, so reconnecting under a spare nick doesn't start them over
+with a thin, low-confidence profile. Only an observed /nick change ties two
+nicks together, so this never folds a stranger's history in. Each nick still
+keeps its own sightings; the pooling is only for judging. "seen N times
+before" counts the whole person.
+
 On EFnet a juped nick sends people to bob_, bobbb or B0B`. When a joiner's
 own verdict is unknown or suspect, the profiler also compares them with two
 kinds of related nick:

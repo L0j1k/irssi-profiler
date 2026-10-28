@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use DBI;
+use List::Util qw(min max sum0);
 
 use Profiler::Nick;
 use Profiler::Score;
@@ -235,6 +236,37 @@ sub profile {
         last_seen  => $last_seen,
         total      => $total,
         sightings  => \@sightings,
+    };
+}
+
+# A nick's profile pooled with the nicks it has switched to or from (see
+# links), the same shape as profile() but covering every nick we know to be
+# the same person. So someone who reconnects as bob_ and bob__ is judged on
+# everything they've done, not on each fragment alone. Nicks are tied only by
+# an observed /nick change, so this never folds in a stranger. Returns the
+# plain profile when there are no links, and undef when the nick is unknown
+# and has none.
+sub pooled_profile {
+    my ($self, $network, $nick) = @_;
+    my @links = $self->links($network, $nick);
+    my $own = $self->profile($network, $nick);
+    return $own unless @links;
+
+    my @profiles = grep { defined } $own, map { $self->profile($network, $_->{nick}) } @links;
+    return $own unless @profiles;
+
+    # Each profile already holds its nick's latest $HISTORY_SIZE, so merging
+    # them and keeping the latest $HISTORY_SIZE gives the person's latest.
+    my @all = sort { $a->{time} <=> $b->{time} || ($a->{id} // 0) <=> ($b->{id} // 0) }
+        map { @{ $_->{sightings} } } @profiles;
+    splice @all, 0, @all - $HISTORY_SIZE if @all > $HISTORY_SIZE;
+
+    return {
+        nick       => $own ? $own->{nick} : $profiles[0]{nick},
+        first_seen => min(map { $_->{first_seen} } @profiles),
+        last_seen  => max(map { $_->{last_seen} } @profiles),
+        total      => sum0(map { $_->{total} } @profiles),
+        sightings  => \@all,
     };
 }
 

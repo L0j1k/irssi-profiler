@@ -353,6 +353,26 @@ subtest 'a corrupt file is reported and never overwritten' => sub {
     like(scalar <$fh>, qr/^not a database/, 'file untouched');
 };
 
+subtest 'pooling a nick with the nicks it has switched with' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->record('efnet', { %obs, nick => 'bob',  host => 'znc.example.com' }, 1000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'bob',  host => 'znc.example.com' }, 2000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'bob_', host => 'znc.example.com' }, 3000, 'consistent');
+    $store->link_nicks('efnet', 'bob', 'bob_', 3000);
+    $store->record('efnet', { %obs, nick => 'ann', host => 'other.example.com' }, 4000, 'consistent');
+    $store->flush;
+
+    my $pooled = reopened($dir)->pooled_profile('efnet', 'bob_');
+    is($pooled->{total}, 3, 'bob_ is judged on all of bob and bob_');
+    is($pooled->{first_seen}, 1000, 'earliest across both');
+    is($pooled->{last_seen}, 3000, 'latest across both');
+    is_deeply([ map { $_->{time} } @{ $pooled->{sightings} } ], [1000, 2000, 3000], 'their sightings merged, oldest first');
+
+    is(reopened($dir)->pooled_profile('efnet', 'ann')->{total}, 1, 'a nick with no links is just itself');
+    is(reopened($dir)->pooled_profile('efnet', 'nobody'), undef, 'an unknown nick with no links is undef');
+};
+
 subtest 'searching sightings by a field with a glob' => sub {
     my $dir = tempdir(CLEANUP => 1);
     my $store = Profiler::Store->new($dir);

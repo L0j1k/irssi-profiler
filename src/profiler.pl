@@ -491,7 +491,9 @@ sub judge {
     my $min = Profiler::Rules::min_trust_for($rules, $job->{tag}, $job->{channel}) // 0;
     my ($r, $count, $label, $variant, $waiting, $evasion, @other_nicks, @marks, @promoted);
     eval {
-        my $profile = $store->profile($job->{tag}, $job->{nick});
+        # Judged against the nick pooled with the nicks it has switched with,
+        # so bob_ and bob__ count toward one person's history (see links).
+        my $profile = $store->pooled_profile($job->{tag}, $job->{nick});
         $count = $profile ? $profile->{total} : 0;
         $r = Profiler::Score::judge($profile, $obs, $now);
         # Before this join is recorded, or its own host would make it fit.
