@@ -252,6 +252,17 @@ sub attribute_score {
     # a name of their own on the address (see similarity for host).
     return if ($attr eq 'host' || $attr eq 'ports') && $obs->{proxy} && !defined solid_key_of($obs);
 
+    # A match on a solid host of their own, a custom name or an IRCCloud
+    # account, is strong evidence it's them. Connecting from somewhere else on
+    # other days isn't evidence against it: someone on a bouncer still uses
+    # their phone. So when this join is on such a host and they've been seen on
+    # it before, it's a full match, its familiarity set by how established that
+    # host is, instead of being watered down by the addresses they also use.
+    if ($attr eq 'host' && defined solid_key_of($obs)) {
+        my $support = sum0(map { $_->[1] } grep { same_solid_host($_->[0], $obs) } @$weighted);
+        return (1, familiarity($support)) if $support > 0;
+    }
+
     my ($total, $support, %by_value) = (0, 0);
     for my $pair (@$weighted) {
         my ($seen, $w) = @$pair;

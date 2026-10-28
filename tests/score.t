@@ -304,6 +304,24 @@ subtest 'an established custom or irccloud host is solid' => sub {
     ok($old_solid >= $old_isp - 1e-9, "a solid host seen long ago doesn't drag the match down ($old_solid >= $old_isp)");
 };
 
+subtest 'a custom host of their own is a full match even when they also use others' => sub {
+    my %bnc = (host => 'znc.example.com', ident => '~agatha', realname => 'Agatha',
+        server => 'irc.example.net', version => 'WeeChat 3.5', channel => '#chan');
+    # Twenty joins from the bouncer, ten from a phone on a dynamic ISP address.
+    my @sightings = (
+        (map { { %bnc, time => $NOW - $_ * $DAY } } 1 .. 20),
+        (map { { %bnc, host => "cpe-$_.dyn.example.net", ip => "198.51.100.$_", time => $NOW - $_ * $DAY } } 1 .. 10),
+    );
+    my $r = judge({ sightings => \@sightings }, \%bnc);
+    is($r->{parts}{host}, 1, 'the bouncer is a full host match, not diluted by the phone');
+    is($r->{verdict}, 'consistent', 'so the join is clearly them');
+    ok($r->{trust} > 0.7, "with high trust ($r->{trust})");
+
+    # On the phone instead, the host is an ISP name, so it's judged the old way.
+    my $phone = judge({ sightings => \@sightings }, { %bnc, host => 'cpe-99.dyn.example.net', ip => '198.51.100.99' });
+    ok($phone->{parts}{host} < 1, 'a dynamic ISP host is still only a partial match');
+};
+
 subtest 'contradicting an attribute that always varies costs little' => sub {
     my $varied = { sightings => [ map { { %bob, ident => "id$_", time => $NOW } } 1 .. 10 ] };
     my $stable = profile_of(10);
