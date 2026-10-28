@@ -24,12 +24,15 @@ use Profiler::Version;
 # host, so it's kept light to avoid counting the same thing twice. A mismatch
 # weighs a little more than a match, since a node that suddenly exposes
 # different services is worth a second look.
+# The server someone connects through is the faintest signal of all: people
+# hop between a network's leaf servers all the time, so it gets a tiny weight,
+# enough to nudge a verdict but never to swing it.
 our %MATCH_WEIGHT = (
     host     => 0.40,
     ident    => 0.10,
     realname => 0.10,
     version  => 0.05,
-    server   => 0.05,
+    server   => 0.01,
     channel  => 0.10,
     ports    => 0.15,
 );
@@ -38,7 +41,7 @@ our %CONTRADICT_WEIGHT = (
     ident    => 0.25,
     realname => 0.25,
     version  => 0.15,
-    server   => 0.05,
+    server   => 0.01,
     channel  => 0.05,
     ports    => 0.20,
 );

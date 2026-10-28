@@ -60,6 +60,16 @@ subtest 'the usual person is consistent' => sub {
     ok($r->{trust} > 0.5 && $r->{trust} < 1, "trust $r->{trust}");
 };
 
+subtest 'the server someone connects through is only a faint signal' => sub {
+    # A regular who shows up through a different leaf server than usual is
+    # still plainly themselves: the server counts against them, but barely.
+    my $r = judge(profile_of(20), { %bob, server => 'irc2.example.net' });
+    is($r->{verdict}, 'consistent', 'a new server still reads as the same person');
+    ok($r->{parts}{server} < 0, 'the server does count against them');
+    my $full = judge(profile_of(20), \%bob)->{match};
+    ok($full - $r->{match} < 0.03, "but it moves the match very little ($full vs $r->{match})");
+};
+
 subtest 'channel names match whatever their case' => sub {
     # The store keeps channels lowercased, and joins arrive as typed.
     my $r = judge(profile_of(10), { %bob, channel => '#CHAN' });
