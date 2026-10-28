@@ -496,9 +496,12 @@ sub linked {
 sub links {
     my ($self, $network, $nick) = @_;
     my $dbh = $self->db($network) or return ();
-    return @{ $dbh->selectall_arrayref('SELECT b AS nick, first_seen, last_seen FROM nick_links WHERE a = ?
-        UNION ALL SELECT a, first_seen, last_seen FROM nick_links WHERE b = ? ORDER BY 3 DESC, 1',
-        { Slice => {} }, lc $nick, lc $nick) };
+    # Cached because pooled_profile calls this for every join, live and on
+    # import, so re-parsing the SQL each time would add up over a long replay.
+    my $sth = $dbh->prepare_cached('SELECT b AS nick, first_seen, last_seen FROM nick_links WHERE a = ?
+        UNION ALL SELECT a, first_seen, last_seen FROM nick_links WHERE b = ? ORDER BY 3 DESC, 1');
+    $sth->execute(lc $nick, lc $nick);
+    return @{ $sth->fetchall_arrayref({}) };
 }
 
 # Recorded nicks with the same skeleton as this one, other than itself, sorted.

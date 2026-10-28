@@ -256,7 +256,10 @@ sub replay {
 # (Store::promote_if_moved), once they've done anything else to it.
 sub observe {
     my ($store, $network, $obs, $time) = @_;
-    my $r = Profiler::Score::judge($store->profile($network, $obs->{nick}), $obs, $time);
+    # Pooled with the nicks they've switched with, the same as the live script
+    # (see Store::pooled_profile), so bob_ and bob__ count as one history here
+    # too and imported verdicts match what the live script would decide.
+    my $r = Profiler::Score::judge($store->pooled_profile($network, $obs->{nick}), $obs, $time);
     return $store->record($network, $obs, $time, @$r{qw(verdict match parts)})->{sightings}[-1];
 }
 
