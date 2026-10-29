@@ -157,10 +157,14 @@ ident, which IRCCloud sets and users can't. `uid` is the free tier and
 `sid` a subscription, so `uid100001` and `sid100001` count as the same
 ident. The account is all that counts for an IRCCloud host: everyone on
 a server shares its name and addresses, so two accounts on
-`hampstead.irccloud.com` are two people. A private address
-like `192.168.0.1` (10/8, 172.16/12, 192.168/16, 127/8, IPv6 fc00::/7,
-fe80::/10, ::1) is a spoof: nobody can really connect from one, so a
-server admin gave it to them.
+`hampstead.irccloud.com` are two people. Injected IRC works the same way:
+it gives each user a `uidNNN` username they can't change, on a bare address
+derived from it, so on a bare address the `uid` is the account (`uid000116`
+is `injected:000116`) and anchors them even when the address changes. A
+`uid` on a real host name isn't injected; the host name anchors them there.
+A private address like `192.168.0.1` (10/8, 172.16/12, 192.168/16, 127/8,
+IPv6 fc00::/7, fe80::/10, ::1) is a spoof: nobody can really connect from
+one, so a server admin gave it to them.
 
 When a nick that has used a custom name, IRCCloud account or spoof before
 turns up on it again, the host match counts for 2 instead of 0.40, but

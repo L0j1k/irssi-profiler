@@ -289,6 +289,14 @@ subtest 'an established custom or irccloud host is solid' => sub {
     is($host->({ %shared, host => 'id-100003.ilkley.irccloud.com' }), 1, 'one account on two servers is one');
     is($host->({ %shared, ident => '~bob' }), 0, 'a server host with no account says nothing');
 
+    # Injected IRC: the uidNNN username anchors them even when the derived
+    # IPv6 host changes, the same as an IRCCloud account.
+    my %inj = (host => '2604:9cc0:180a:1::10', ident => 'uid000116', channel => '#chan');
+    is(judge($history->(%inj), { %inj, host => '2604:9cc0:180a:9::99' })->{verdict}, 'consistent',
+        'an injected user on a new derived host is still them');
+    isnt(judge($history->(%inj), { %inj, host => '2604:9cc0:180a:9::99', ident => 'uid000117' })->{verdict},
+        'consistent', 'a different injected account on that host is not');
+
     $r = judge($history->(%gus), { %gus, ident => 'lol' });
     isnt($r->{verdict}, 'consistent', 'someone else on a shared box is not');
 
