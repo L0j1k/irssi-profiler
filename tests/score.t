@@ -70,9 +70,13 @@ subtest 'the server someone connects through is only a faint signal' => sub {
     ok($full - $r->{match} < 0.03, "but it moves the match very little ($full vs $r->{match})");
 };
 
-subtest 'a faint signal is not counted as something against them' => sub {
-    ok(!Profiler::Score::against({ host => 1, ident => 1, server => -1 }), 'a server mismatch alone is not');
-    ok(Profiler::Score::against({ host => -0.5, server => 1 }), 'but a weightier mismatch is');
+subtest 'only a strong signal counts as something against them' => sub {
+    ok(!Profiler::Score::against({ host => 1, realname => -1 }), 'a realname mismatch alone is too weak');
+    ok(!Profiler::Score::against({ host => 1, ident => -1 }), 'and so is an ident mismatch');
+    ok(!Profiler::Score::against({ host => 1, server => -1 }), 'and the server');
+    ok(!Profiler::Score::against({ host => 1, channel => -1 }), 'and the channel');
+    ok(Profiler::Score::against({ host => 1, version => -1 }), 'but a client version mismatch does');
+    ok(Profiler::Score::against({ host => -0.5 }), 'and a host mismatch does');
     ok(!Profiler::Score::against({ host => 1, ident => 1 }), 'and a clean join has nothing against it');
 };
 

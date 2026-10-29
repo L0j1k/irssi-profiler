@@ -13,34 +13,37 @@ use Profiler::Version;
 # nick?" Each attribute of a join is compared with that nick's history and
 # scores from -1 (contradicts a settled habit) to +1 (matches a long habit).
 #
-# Weights are lopsided on purpose. Ident, realname and client version show up
-# in a plain /whois or CTCP, so an impostor can copy them: a match proves
-# little, but a mismatch means they didn't even try. The host is hard to fake,
-# so a match is strong evidence, while a mismatch is only moderate because
-# people change ISPs and travel.
+# Weights are lopsided on purpose, by how little the user controls each field.
+# Ident and realname are typed into the client, often mashed in at setup, so
+# neither a match nor a mismatch says much: both are weak, the same person's
+# realname changes between sessions as easily as an impostor's. The CTCP
+# VERSION is the client software itself, which a low-effort troll won't bother
+# changing, so it's a steadier signal than ident or realname. The host is hard
+# to fake and the strongest signal, more so when it's a custom name or a
+# third-party bouncer account like IRCCloud, which somebody other than the user
+# controls (see the solid-host handling below).
 # Open ports are where someone connects from, like the host, so they're
-# weighted below the identity attributes. The set survives a change of dynamic
-# address, which is where the host name fails, but it also overlaps with the
-# host, so it's kept light to avoid counting the same thing twice. A mismatch
-# weighs a little more than a match, since a node that suddenly exposes
-# different services is worth a second look.
+# weighted like it. The set survives a change of dynamic address, which is
+# where the host name fails, but it also overlaps with the host, so it's kept
+# from counting the same thing twice. A mismatch weighs a little more than a
+# match, since a node that suddenly exposes different services is worth a look.
 # The server someone connects through is the faintest signal of all: people
 # hop between a network's leaf servers all the time, so it gets a tiny weight,
 # enough to nudge a verdict but never to swing it.
 our %MATCH_WEIGHT = (
     host     => 0.40,
-    ident    => 0.10,
-    realname => 0.10,
-    version  => 0.05,
+    ident    => 0.05,
+    realname => 0.05,
+    version  => 0.10,
     server   => 0.01,
     channel  => 0.10,
     ports    => 0.15,
 );
 our %CONTRADICT_WEIGHT = (
     host     => 0.35,
-    ident    => 0.25,
-    realname => 0.25,
-    version  => 0.15,
+    ident    => 0.10,
+    realname => 0.10,
+    version  => 0.20,
     server   => 0.01,
     channel  => 0.05,
     ports    => 0.20,
@@ -89,9 +92,11 @@ our $HOST_CHANGES_OFTEN_AT = 0.25;
 # from (host, server) or what they happen to be doing (channel).
 my @IDENTITY_ATTRS = qw(ident realname version);
 
-# Signals faint enough that a mismatch nudges the score but shouldn't raise a
-# warning on its own. The server someone connects through changes constantly.
-my @FAINT_ATTRS = qw(server);
+# A mismatch has to weigh at least this much to raise a warning on its own
+# (see against). It tracks the contradict weights, so the strong signals
+# (host, client version, open ports) count and the weak ones a user controls
+# or that drift on their own (ident, realname, channel, server) don't.
+our $WARN_CONTRADICT_WEIGHT = 0.15;
 
 my %PREFIX = (4 => 24, 6 => 64);
 
@@ -165,14 +170,15 @@ sub identity_contradicted {
     return any { ($parts->{$_} // 0) < 0 } @IDENTITY_ATTRS;
 }
 
-# Is anything that isn't a faint signal scoring against them? This is what
-# turns a thin, under-the-minimum join from a quiet "unproven" into a warning:
-# a newcomer we've barely seen is fine, but one with a real signal disagreeing
-# could be a troll on the nick. A faint signal like the server doesn't count.
+# Is a strong signal scoring against them? This is what turns a thin,
+# under-the-minimum join from a quiet "unproven" into a warning: a newcomer
+# we've barely seen is fine, but one whose host, client version or open ports
+# disagree could be a troll on the nick. A weak signal the user types in
+# themselves, like ident or realname, doesn't warn on its own, since the real
+# person's is as likely to differ as an impostor's.
 sub against {
     my ($parts) = @_;
-    my %faint = map { $_ => 1 } @FAINT_ATTRS;
-    return any { !$faint{$_} && ($parts->{$_} // 0) < 0 } keys %$parts;
+    return any { ($parts->{$_} // 0) < 0 && ($CONTRADICT_WEIGHT{$_} // 0) >= $WARN_CONTRADICT_WEIGHT } keys %$parts;
 }
 
 # Sightings that count: everything except what was quarantined as suspect.

@@ -56,6 +56,12 @@ subtest 'under the minimum, thin history is unproven and anything against them i
     ($word) = @{ line({ %consistent, trust => 0.4, match => 0.6,
         parts => { host => 0.9, ident => 1, server => -0.5 } }) };
     is($word, 'UNPROVEN', 'a faint server mismatch alone is not enough to warn');
+
+    # The idlerman case: ident, client and channel match, only the realname
+    # differs, which the real person changes as readily as an impostor.
+    ($word) = @{ line({ %consistent, verdict => 'mixed', trust => 0.1, match => 0.09,
+        parts => { channel => 1, ident => 1, realname => -1, version => 1 } }) };
+    is($word, 'UNPROVEN', 'a realname mismatch with everything else matching is not a warning');
 };
 
 subtest 'an unknown join that disagrees with old history says it is held' => sub {

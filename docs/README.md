@@ -174,18 +174,25 @@ The "seen N time(s) before" in a verdict counts every sighting of the
 nick. Scoring only looks at the latest 200, and the line says so when
 there are more.
 
-The weights are lopsided on purpose. Ident, realname and version are visible
-to anyone, so an impostor can copy them. Matching them proves little, and
-failing to match is telling. A host is hard to fake.
+The weights are lopsided on purpose, by how little the user controls each
+field. Ident and realname are typed into the client, often mashed in at
+setup, so the real person's differs between sessions as readily as an
+impostor's: both are weak. The client version is the software itself, which a
+low-effort troll won't bother changing, so it's steadier. A host is hard to
+fake and strongest, more so a custom name or a bouncer account (see solid
+hosts above) that someone other than the user controls. The server someone
+connects through is the faintest signal, since people hop between a network's
+leaf servers all the time.
 
 | attribute | weight if it matches | weight if it contradicts |
 |-----------|----------------------|--------------------------|
 | host      | 0.40                 | 0.35                     |
-| ident     | 0.10                 | 0.25                     |
-| realname  | 0.10                 | 0.25                     |
-| version   | 0.05                 | 0.15                     |
-| server    | 0.05                 | 0.05                     |
+| ports     | 0.15                 | 0.20                     |
+| version   | 0.10                 | 0.20                     |
 | channel   | 0.10                 | 0.05                     |
+| ident     | 0.05                 | 0.10                     |
+| realname  | 0.05                 | 0.10                     |
+| server    | 0.01                 | 0.01                     |
 
 **match** is the weighted average of the attribute scores, with each weight
 also multiplied by the familiarity of that attribute's total weight. Imported
@@ -400,7 +407,7 @@ someone starts with a one-word summary in its own colour:
 
 | word      | colour        | means |
 |-----------|---------------|-------|
-| WARNING   | bright red    | the nick's history contradicts who they are (ident, realname or client), or under the channel's min_trust with something against them |
+| WARNING   | bright red    | the nick's history contradicts who they are, or under the channel's min_trust with a strong signal (host, client version or open ports) against them |
 | EVADER    | bright red    | looks like someone who was kicked or banned, under another nick |
 | JUPER     | purple        | sitting on a nick its owner is waiting for, or looks like someone caught doing that |
 | UNPROVEN  | bright purple | under the channel's min_trust, but everything matches: just not much history yet |
