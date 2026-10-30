@@ -28,6 +28,12 @@ my $ISP_WORD = qr/^(?:a?dsl|vdsl|dhcp|dyn|dynamic|pool|cable|res|resi|residentia
 # 226.sub-203-0-113.myvzw.com, where the first label alone is short.
 my $ISP_DIGITS = 4;
 
+# Injected IRC hands every user a deterministic address in this one /48 and a
+# uidNNN (free) or sidNNN (paid) username they can't change. The addresses are
+# shared infrastructure like an IRCCloud server, so only the account says who
+# someone is: see solid_key and account_only.
+my $INJECTED_RANGE = qr/^2604:9cc0:180a:/;
+
 # Hosts repeat a lot, especially during an import, so answers are kept.
 my (%kind_cache, %key_cache, %domain_cache);
 
@@ -55,6 +61,7 @@ sub kind {
 sub classify {
     my ($host) = @_;
     return 'spoof' if is_private($host);
+    return 'injected' if $host =~ $INJECTED_RANGE;
     return 'ip' if $host =~ /^[\d.]+$/ || $host =~ /:/;
     return 'other' unless $host =~ /\./;
     return 'irccloud' if $host =~ /\.irccloud\.com$/;
@@ -82,20 +89,38 @@ sub is_private {
 # or sidNNN in the ident, and users can't choose either.
 sub solid_key {
     my ($host, $ident) = @_;
-    return $key_cache{$host} if exists $key_cache{$host};
     my $kind = kind($host);
-    # Not cached, since it can depend on the ident.
+    # irccloud and injected depend on the ident, so they come before the
+    # host-only cache and are never stored in it.
     if ($kind eq 'irccloud') {
         my ($account) = $host =~ /^id-(\d+)\./i;
         $account //= irccloud_account($ident);
         return defined $account ? "irccloud:$account" : undef;
     }
+    if ($kind eq 'injected') {
+        # The address is derived from the account and stable, but the uid/sid
+        # username is the clean account number, the same scheme as IRCCloud.
+        my $account = irccloud_account($ident);
+        return defined $account ? "injected:$account" : lc $host;
+    }
+    return $key_cache{$host} if exists $key_cache{$host};
     return $key_cache{$host} = $kind eq 'custom' || $kind eq 'spoof' ? lc $host : undef;
 }
 
-# The IRCCloud account number in an ident, or undef. It's uidNNN on the free
-# tier and sidNNN with a subscription, and older connections have it with a
-# tilde, like ~sidNNN.
+# Hosts where the address is shared and only the account says who someone is:
+# IRCCloud's servers, where everyone on one shares its name and addresses, and
+# Injected IRC's range, whose addresses all sit in one /48. On these, two
+# connections match only when their accounts do, never by being near each other.
+sub account_only {
+    my ($host) = @_;
+    my $kind = kind($host);
+    return $kind eq 'irccloud' || $kind eq 'injected';
+}
+
+# The account number in a uidNNN or sidNNN username, or undef. IRCCloud and
+# Injected IRC both use this scheme: uid is the free tier, sid a paid one, the
+# number is the same account either way, and older idents have a tilde like
+# ~sidNNN.
 sub irccloud_account {
     my ($ident) = @_;
     my ($account) = ($ident // '') =~ /^~?[us]id(\d+)$/;

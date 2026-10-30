@@ -157,7 +157,11 @@ ident, which IRCCloud sets and users can't. `uid` is the free tier and
 `sid` a subscription, so `uid100001` and `sid100001` count as the same
 ident. The account is all that counts for an IRCCloud host: everyone on
 a server shares its name and addresses, so two accounts on
-`hampstead.irccloud.com` are two people. A private address
+`hampstead.irccloud.com` are two people. Injected IRC works the same way:
+every user gets a deterministic address in one /48 (`2604:9cc0:180a::/48`)
+and a `uidNNN` or `sidNNN` username they can't change (`uid` free, `sid`
+paid), so the account in the username is all that counts and two accounts in
+that range are two people, however close their addresses. A private address
 like `192.168.0.1` (10/8, 172.16/12, 192.168/16, 127/8, IPv6 fc00::/7,
 fe80::/10, ::1) is a spoof: nobody can really connect from one, so a
 server admin gave it to them.

@@ -289,6 +289,14 @@ subtest 'an established custom or irccloud host is solid' => sub {
     is($host->({ %shared, host => 'id-100003.ilkley.irccloud.com' }), 1, 'one account on two servers is one');
     is($host->({ %shared, ident => '~bob' }), 0, 'a server host with no account says nothing');
 
+    # Injected IRC: the uid/sid account identifies the user across the whole
+    # range, and two accounts in the same /64 are two people, not neighbours.
+    my %inj = (host => '2604:9cc0:180a:1::8', ident => 'sid000108', channel => '#chan');
+    is(judge($history->(%inj), { %inj, host => '2604:9cc0:180a:9::99' })->{verdict}, 'consistent',
+        'an injected account anywhere in the range is still them');
+    isnt(judge($history->(%inj), { %inj, host => '2604:9cc0:180a:1::9', ident => 'sid000109' })->{verdict},
+        'consistent', 'a different account in the same /64 is someone else');
+
     $r = judge($history->(%gus), { %gus, ident => 'lol' });
     isnt($r->{verdict}, 'consistent', 'someone else on a shared box is not');
 

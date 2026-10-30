@@ -192,10 +192,11 @@ sub history {
 sub similarity {
     my ($attr, $seen, $obs) = @_;
     if ($attr eq 'host') {
-        # Everyone on an IRCCloud server shares its host name and addresses,
-        # so only the account says who it is.
+        # On shared infrastructure like an IRCCloud server or Injected IRC's
+        # range, everyone's addresses sit together, so only the account says
+        # who it is, never nearness (see Profiler::Host::account_only).
         return same_solid_host($seen, $obs)
-            if Profiler::Host::kind($seen->{host}) eq 'irccloud' || Profiler::Host::kind($obs->{host}) eq 'irccloud';
+            if Profiler::Host::account_only($seen->{host}) || Profiler::Host::account_only($obs->{host});
         return 1 if $seen->{host} eq $obs->{host};
         return 1 if same_solid_host($seen, $obs);
         if (defined $seen->{ip} && defined $obs->{ip}) {

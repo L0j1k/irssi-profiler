@@ -23,6 +23,9 @@ subtest 'kinds of host' => sub {
         'id-100001.helmsley.irccloud.com'          => 'irccloud',
         'ID-100001.Charlton.IRCCloud.com'          => 'irccloud',
         'tinside.irccloud.com'                     => 'irccloud',
+        '2604:9cc0:180a:1::8'                      => 'injected',
+        '2604:9cc0:180a::1'                        => 'injected',
+        '2604:9cc0:180b::1'                        => 'ip',
         'irc.example.net'                          => 'custom',
         'gus.example.org'                        => 'custom',
         'box2.example.org'                         => 'custom',
@@ -64,6 +67,22 @@ subtest 'solid keys say when two hosts are the same person' => sub {
     is(Profiler::Host::solid_key('192.168.0.1'), '192.168.0.1', 'so is a spoof');
     is(Profiler::Host::solid_key($_), undef, "$_ is not solid")
         for '198.51.100.7', 'cpe-198-51-100-202.san.res.example.com', 'localhost';
+};
+
+subtest 'injected irc: the account identifies the user, not the shared range' => sub {
+    is(Profiler::Host::solid_key('2604:9cc0:180a:1::8', 'sid000108'), 'injected:000108', 'the sid account');
+    is(Profiler::Host::solid_key('2604:9cc0:180a:1::10', 'uid000116'), 'injected:000116', 'and a uid account');
+    is(Profiler::Host::solid_key('2604:9cc0:180a:1::8', 'sid000108'),
+        Profiler::Host::solid_key('2604:9cc0:180a:9::99', 'sid000108'), 'the same account anywhere in the range');
+    is(Profiler::Host::solid_key('2604:9cc0:180a:1::8', 'uid000108'),
+        Profiler::Host::solid_key('2604:9cc0:180a:1::8', 'sid000108'), 'uid and sid of one account are the same user');
+    isnt(Profiler::Host::solid_key('2604:9cc0:180a:1::8', 'sid000108'),
+        Profiler::Host::solid_key('2604:9cc0:180a:1::9', 'sid000109'), 'another account in the range differs');
+
+    ok(Profiler::Host::account_only('2604:9cc0:180a:1::8'), 'the range is account-only, like irccloud');
+    ok(Profiler::Host::account_only('hampstead.irccloud.com'), 'as is irccloud');
+    ok(!Profiler::Host::account_only('1.2.3.4'), 'a plain address is not');
+    ok(!Profiler::Host::account_only('heelys.club'), 'nor a custom host');
 };
 
 done_testing;
