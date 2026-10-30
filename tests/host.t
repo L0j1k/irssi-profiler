@@ -66,20 +66,4 @@ subtest 'solid keys say when two hosts are the same person' => sub {
         for '198.51.100.7', 'cpe-198-51-100-202.san.res.example.com', 'localhost';
 };
 
-subtest 'injected irc usernames anchor identity like an irccloud account' => sub {
-    is(Profiler::Host::injected_account('uid000116'), '000116', 'the uid username');
-    is(Profiler::Host::injected_account('~uid000116'), '000116', 'with a tilde');
-    is(Profiler::Host::injected_account('bob'), undef, 'a normal ident is not one');
-    is(Profiler::Host::injected_account('sid000116'), undef, 'nor an sid');
-
-    is(Profiler::Host::solid_key('2604:9cc0:180a:1::10', 'uid000116'),
-        Profiler::Host::solid_key('2604:9cc0:180a:9::99', 'uid000116'),
-        'the same account however the derived host changes');
-    is(Profiler::Host::solid_key('2604:9cc0:180a:1::10', 'uid000116'), 'injected:000116', 'keyed by the account');
-    isnt(Profiler::Host::solid_key('2604:9cc0:180a:1::10', 'uid000116'),
-        Profiler::Host::solid_key('2604:9cc0:180a:1::10', 'uid000117'), 'another account differs');
-    is(Profiler::Host::solid_key('2604:9cc0:180a:1::10', '~bob'), undef, 'a bare address without a uid is not solid');
-    is(Profiler::Host::solid_key('irc.example.net', 'uid000116'), 'irc.example.net', 'a custom host name still wins');
-};
-
 done_testing;

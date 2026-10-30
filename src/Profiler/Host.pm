@@ -82,21 +82,14 @@ sub is_private {
 # or sidNNN in the ident, and users can't choose either.
 sub solid_key {
     my ($host, $ident) = @_;
+    return $key_cache{$host} if exists $key_cache{$host};
     my $kind = kind($host);
-    # irccloud and injected depend on the ident, so they're worked out before
-    # the host-only cache and never stored in it.
+    # Not cached, since it can depend on the ident.
     if ($kind eq 'irccloud') {
         my ($account) = $host =~ /^id-(\d+)\./i;
         $account //= irccloud_account($ident);
         return defined $account ? "irccloud:$account" : undef;
     }
-    # Injected IRC gives each user a uidNNN username they can't change, on a
-    # bare address derived from it. With no host name to go on, the username is
-    # the account. A real host name is a clearer anchor and wins below.
-    if ($kind eq 'ip' && defined(my $account = injected_account($ident))) {
-        return "injected:$account";
-    }
-    return $key_cache{$host} if exists $key_cache{$host};
     return $key_cache{$host} = $kind eq 'custom' || $kind eq 'spoof' ? lc $host : undef;
 }
 
@@ -106,17 +99,6 @@ sub solid_key {
 sub irccloud_account {
     my ($ident) = @_;
     my ($account) = ($ident // '') =~ /^~?[us]id(\d+)$/;
-    return $account;
-}
-
-# The Injected IRC account in a username, or undef. Each user gets a uidNNN
-# username they can't change, like uid000116. IRCCloud usernames look the same
-# but arrive on an irccloud.com host, so solid_key only reads a uid as injected
-# on a bare address. The zero padding is kept, so it's exactly what was
-# assigned.
-sub injected_account {
-    my ($ident) = @_;
-    my ($account) = ($ident // '') =~ /^~?uid(\d+)$/;
     return $account;
 }
 
