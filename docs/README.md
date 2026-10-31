@@ -377,6 +377,16 @@ nick.
   nick. `/profiler show` lists it as `juped 1x, last ... while bob_
   waited`.
 
+  The owner doesn't have to be here. When a join contradicts who an
+  established nick is (a suspect whose confidence is at least 0.75, so the
+  nick has a settled owner), it's read as juping that nick and leads with
+  JUPER, like `JUPER gimli (...) is wearing gimli's established nick; ...
+  Quarantined`. This is wording only: it's quarantined like any suspect but
+  not remembered as a jupe mark, since without the owner present it's an
+  inference. A `juper <host>` rules line goes further: it names a host known
+  for camping nicks (like a jupe bouncer), and anyone who joins from it leads
+  with JUPER whatever they score.
+
 ## Labels
 
 The scoring can't know what the ops have decided about someone, so you can
@@ -413,7 +423,7 @@ someone starts with a one-word summary in its own colour:
 |-----------|---------------|-------|
 | WARNING   | bright red    | the nick's history contradicts who they are, or under the channel's min_trust with a strong signal (host, client version or open ports) against them |
 | EVADER    | bright red    | looks like someone who was kicked or banned, under another nick |
-| JUPER     | purple        | sitting on a nick its owner is waiting for, or looks like someone caught doing that |
+| JUPER     | purple        | sitting on a nick (its owner waiting, or wearing an established nick, or from a known juper host), or caught doing that before |
 | UNPROVEN  | bright purple | under the channel's min_trust, but everything matches: just not much history yet |
 | SUSPECT   | bright yellow | connecting from somewhere new for them: a likely proxy, an open proxy port, or an ISP they've never used |
 | MIXED     | bright cyan   | partly matches |

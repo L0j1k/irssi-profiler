@@ -40,8 +40,16 @@
 # already. The probe result is cached with the whois for
 # profiler_hostinfo_max_age. Banners are kept for review but don't affect the
 # score.
+#
+#   juper <host phrase>
+#
+# Names a host (substring match) known for camping other people's nicks, like
+# a nick-jupe bouncer. Anyone who joins from it leads with JUPER, whatever
+# else the join scores.
 
 efnet #CHAN 0.5
+
+#juper jupe.monster
 
 #libera #mychan,#otherchan 0.3
 #* * 0.1

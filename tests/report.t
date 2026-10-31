@@ -91,7 +91,7 @@ subtest 'a likely proxy is one line, whatever the verdict' => sub {
     like($text, $proxy, 'and on a proxy');
 
     ($word, $text) = @{ line({ %consistent, verdict => 'suspect', match => -0.3 }, hostinfo => \%linode) };
-    is($word, 'WARNING', 'a clash in who they are is a warning, even on a proxy');
+    is($word, 'JUPER', 'a clash on this established nick is juping, still one line, even on a proxy');
     like($text, $proxy, 'on a proxy');
 
     ($word, $text) = @{ line({ %consistent, verdict => 'new host', parts => { host => -0.5, ident => 0.9 } },
@@ -162,10 +162,24 @@ subtest 'a suspect from a new ISP says which' => sub {
 };
 
 subtest 'a clash in who they are is a warning, not just a suspect' => sub {
-    my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', match => -0.6,
+    my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', match => -0.6, confidence => 0.55,
         parts => { ident => -1, realname => -0.8 } }) };
     is($word, 'WARNING', 'ident and realname disagree, someone wearing the nick');
     like($text, qr/doesn't match the history of bob.*Quarantined/s, $text);
+};
+
+subtest 'a clash on an established nick is juping it, owner here or not' => sub {
+    my ($word, $text) = @{ line({ %consistent, verdict => 'suspect', match => -0.6, confidence => 0.9,
+        parts => { host => -1, ident => -1 } }) };
+    is($word, 'JUPER', 'wearing a well-known nick is juping');
+    like($text, qr/is wearing bob's established nick/, $text);
+    like($text, qr/Quarantined/, 'still quarantined');
+};
+
+subtest 'a known juper source leads with JUPER whatever the verdict' => sub {
+    my ($word, $text) = @{ line(\%consistent, juper_host => 1) };
+    is($word, 'JUPER', 'even a join that would otherwise be quiet');
+    like($text, qr/is from a known juper source/, $text);
 };
 
 subtest 'an open proxy port gets its own suspect wording' => sub {

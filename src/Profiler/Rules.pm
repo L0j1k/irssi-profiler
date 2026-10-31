@@ -13,6 +13,7 @@ use Profiler::Probe;
 #     notprobe <phrase>
 #     port <n[,n...]>
 #     proxyport <n[,n...]>
+#     juper <host phrase>
 #
 # A watch line asks for a warning when someone joins one of those channels with
 # trust under min_trust (0 to 1). "*" in the network or channel field means
@@ -22,14 +23,16 @@ use Profiler::Probe;
 # A port line replaces the default set of ports we knock on (Profiler::Probe);
 # a proxyport line adds to the ports that count as an open proxy. A notprobe
 # line names a host we never knock on, like a shared service, on top of the
-# built-in IRCCloud skip. Lines starting with "#" are comments.
+# built-in IRCCloud skip. A juper line names a host (substring) known for
+# camping nicks, so whoever joins from it leads with JUPER. Lines starting with
+# "#" are comments.
 
 # Returns (\%rules, \@errors). Bad lines are skipped and described in @errors so
 # one typo does not throw away the rest of the file.
 sub parse {
     my (@lines) = @_;
     my %rules = (watches => [], proxy_keywords => [], not_proxy => [], not_probe => [],
-        probe_ports => [], proxy_ports => []);
+        probe_ports => [], proxy_ports => [], juper_hosts => []);
     my @errors;
 
     my $n = 0;
@@ -37,9 +40,10 @@ sub parse {
         $n++;
         next if $line =~ /^\s*(#|$)/;
 
-        if ($line =~ /^\s*(proxy|notproxy|notprobe)\b\s*(.*?)\s*$/i) {
+        if ($line =~ /^\s*(proxy|notproxy|notprobe|juper)\b\s*(.*?)\s*$/i) {
             my ($kind, $phrase) = (lc $1, $2);
-            my %list = (proxy => 'proxy_keywords', notproxy => 'not_proxy', notprobe => 'not_probe');
+            my %list = (proxy => 'proxy_keywords', notproxy => 'not_proxy', notprobe => 'not_probe',
+                juper => 'juper_hosts');
             if (length $phrase) {
                 push @{ $rules{ $list{$kind} } }, lc $phrase;
             }

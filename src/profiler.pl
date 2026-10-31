@@ -190,6 +190,14 @@ sub proxy_keywords {
     return [ @Profiler::Whois::DEFAULT_PROXY_KEYWORDS, @{ $rules->{proxy_keywords} } ];
 }
 
+# Whether a host matches any "juper" rules line (substring), a host known for
+# camping nicks, so whoever is on it leads with JUPER.
+sub from_juper_host {
+    my ($host) = @_;
+    my $lc = lc $host;
+    return scalar grep { index($lc, $_) >= 0 } @{ $rules->{juper_hosts} };
+}
+
 # The ports we knock on: the rules file's set if it named one, otherwise the
 # built-in default.
 sub probe_ports {
@@ -530,6 +538,7 @@ sub judge {
         hostinfo    => $hostinfo,
         marks       => \@marks,
         label       => $label,
+        juper_host  => from_juper_host($job->{host}),
     });
     if ($variant) {
         my $variant_word;

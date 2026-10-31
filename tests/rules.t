@@ -80,6 +80,17 @@ subtest 'notprobe lines' => sub {
     like($errors->[0], qr/^line 3: notprobe needs/, 'error names the line');
 };
 
+subtest 'juper lines' => sub {
+    my ($rules, $errors) = Profiler::Rules::parse(
+        "juper jupe.monster\n",
+        "juper Nick Camper BNC\n",
+        "juper\n",
+    );
+    is_deeply($rules->{juper_hosts}, ['jupe.monster', 'nick camper bnc'], 'host phrases kept, lowercased');
+    is(scalar @$errors, 1, 'an empty juper line is an error');
+    like($errors->[0], qr/^line 3: juper needs/, 'error names the line');
+};
+
 subtest 'min_trust_for' => sub {
     my ($rules) = Profiler::Rules::parse(
         "efnet #chan,#other 0.6\n",

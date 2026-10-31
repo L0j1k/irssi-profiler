@@ -14,6 +14,12 @@ use Profiler::Store ();
 # How many of the nicks someone changes between are named before "and N more".
 our $NICKS_SHOWN = 3;
 
+# Confidence at which a nick counts as having an established owner. Above it, a
+# join that contradicts who they are isn't just a suspect: someone is wearing a
+# well-known person's nick, which is juping, so it leads with JUPER even when
+# the owner isn't here to show it.
+our $ESTABLISHED_OWNER = 0.75;
+
 # The line to print about a judged join, as (word, text), or nothing when
 # there's nothing worth saying. The word is one of the summaries the script
 # colours, like SUSPECT. $job is the join (nick, ident, host, version and
@@ -29,6 +35,8 @@ our $NICKS_SHOWN = 3;
 #                (Profiler::Marks::counts), which always gets the line shown
 #   label        the join's label from Profiler::Label::for_join; BAD and
 #                CONFLICTING always get the line shown
+#   juper_host   the host is a known juper source (a "juper" rules line), so
+#                whoever is on it leads with JUPER, whatever the verdict
 sub verdict_line {
     my ($job, $r, $ctx) = @_;
     my $hostinfo = $ctx->{hostinfo} // {};
@@ -60,6 +68,13 @@ sub verdict_line {
     my $why = join ' ', map { sprintf('%s=%+.2f', $_, $r->{parts}{$_}) } sort keys %{ $r->{parts} };
     $why = " [$why]" if $why;
 
+    # A known juper source (a "juper" rules line) leads with JUPER whoever is
+    # on it and whatever the verdict, since the point of the host is camping
+    # nicks.
+    if ($ctx->{juper_host}) {
+        return ('JUPER', "$who is from a known juper source; $score, $seen$why");
+    }
+
     # Suspects are always shown, whatever the rules say, since they are the
     # whole point: an established nick being worn by somebody else.
     if ($r->{verdict} eq 'suspect') {
@@ -72,11 +87,17 @@ sub verdict_line {
         }
         my $isp = $r->{new_isp} ? ": from an ISP they've never used, $r->{new_isp}{isp}, usually $r->{new_isp}{usual}" : '';
         # A clash in who they are, their ident, realname or client, is the
-        # serious case, someone wearing the nick, so it gets the red WARNING. A
-        # suspect that's only about where they come from, a new ISP, is the
-        # quieter orange SUSPECT.
-        return ($r->{match} < 0 ? 'WARNING' : 'SUSPECT',
-            "$who doesn't match the history of $job->{nick}$when$isp; $score, $seen$why. "
+        # serious case: somebody is wearing the nick. On a nick with an
+        # established owner that's juping, so it leads with JUPER even with the
+        # owner not here (Profiler::Jupe catches it when they are). On a less
+        # settled nick it's the red WARNING. A suspect that's only about where
+        # they come from, a new ISP, is the quieter orange SUSPECT.
+        my $word = $r->{match} >= 0                             ? 'SUSPECT'
+                 : $r->{confidence} >= $ESTABLISHED_OWNER       ? 'JUPER'
+                 :                                                'WARNING';
+        my $wearing = $word eq 'JUPER' ? "is wearing $job->{nick}'s established nick"
+                    :                     "doesn't match the history of $job->{nick}";
+        return ($word, "$who $wearing$when$isp; $score, $seen$why. "
             . "Quarantined; /profiler accept $job->{nick} if it's really them");
     }
     # Too little recent history to judge, but what there is disagrees, which
