@@ -230,4 +230,20 @@ subtest 'a variant goes after the verdict, coloured by how well it fits' => sub 
     like($text, qr/^bob_ looks like bob, who they've switched nicks with before: /, $text);
 };
 
+subtest 'the verbose detail of a queried sighting' => sub {
+    my %s = (time => 1700000000, nick => 'bob', channel => '#chan', ident => '~bob', host => 'host.example.net',
+        realname => 'Bob Smith', version => 'HexChat 2.16.2', server => 'irc.example.net', ip => '198.51.100.7',
+        ports => '22,6697', verdict => 'consistent', quarantined => 0);
+    my $d = Profiler::Report::query_detail(\%s, 'version');
+    unlike($d, qr/\bversion=/, 'leaves out the field already shown on the summary line');
+    unlike($d, qr/\b(?:nick|channel|ident|host|time)=/, 'and the ones already on the summary line');
+    like($d, qr/realname=Bob Smith/, 'shows the realname');
+    like($d, qr/ports=22,6697/, 'and the open ports');
+    like($d, qr/verdict=consistent/, 'and the verdict');
+    unlike($d, qr/quarantined/, 'no quarantined note when it counted');
+
+    like(Profiler::Report::query_detail({ %s, quarantined => 1 }, 'version'), qr/\| quarantined$/, 'notes a held one');
+    is(Profiler::Report::query_detail({ verdict => 'unknown' }, 'host'), 'verdict=unknown', 'only what is stored');
+};
+
 done_testing;

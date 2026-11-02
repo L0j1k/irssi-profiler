@@ -143,6 +143,19 @@ sub verdict_line {
     return;
 }
 
+# The stored fields of a sighting for /profiler query -v, other than the ones
+# already on its summary line (nick, channel, ident, host, time) and the
+# queried field $shown, as "key=value | ..." with a note when it was
+# quarantined.
+sub query_detail {
+    my ($sighting, $shown) = @_;
+    my @parts = map { "$_=$sighting->{$_}" }
+        grep { $_ ne $shown && defined $sighting->{$_} && length $sighting->{$_} }
+        qw(realname version server ip proxy provider ports banners verdict);
+    push @parts, 'quarantined' if $sighting->{quarantined};
+    return @parts ? join(' | ', @parts) : '(no other fields stored)';
+}
+
 # "a, b, c" for the first few nicks, then how many more there are.
 sub nick_list {
     my (@nicks) = @_;

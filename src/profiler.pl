@@ -722,13 +722,15 @@ sub cmd_profiler {
     }
     elsif ($subcmd eq 'query') {
         return info("/profiler query needs an active server") unless $server;
-        # query <field> <pattern> [page]. The pattern is the rest of the line
-        # (so it can hold spaces), with an optional page number after it. A
+        # query <field> <pattern> [page] [-v]. The pattern is the rest of the
+        # line (so it can hold spaces), with an optional page number after it. A
         # surrounding pair of quotes is stripped, as in the common
         # /profiler query version '*HexChat 2.16.2*'. Without quotes, a trailing
-        # number is taken as the page, so quote a pattern that ends in one.
+        # number is taken as the page, so quote a pattern that ends in one. -v
+        # or --verbose, anywhere, prints every stored field of each sighting.
+        my $verbose = $data =~ s/(?:^|\s)(?:--verbose|-v)(?=\s|$)/ /g ? 1 : 0;
         my ($field, $rest) = $data =~ /^\s*\S+\s+(\S+)\s+(.*\S)/;
-        return info("usage: /profiler query <field> <pattern> [page], e.g. /profiler query version '*HexChat 2.16.2*'")
+        return info("usage: /profiler query <field> <pattern> [page] [-v], e.g. /profiler query version '*HexChat 2.16.2*'")
             unless defined $rest;
         my ($pattern, $page);
         if ($rest =~ /^(['"])(.*)\1(?:\s+(\d+))?\s*$/) { ($pattern, $page) = ($2, $3); }
@@ -752,6 +754,7 @@ sub cmd_profiler {
             my $s = $f->{sighting};
             info(sprintf('%s  %s in %s as %s@%s; %s: %s', scalar localtime($s->{time}), $f->{nick},
                 $s->{channel} // '?', $s->{ident} // '?', $s->{host} // '?', lc $field, $s->{ lc $field } // '?'));
+            info('    ' . Profiler::Report::query_detail($s, lc $field)) if $verbose;
         }
     }
     elsif ((grep { $subcmd eq $_ } @Profiler::Label::LABELS, 'unlabel') && length $arg) {
@@ -797,10 +800,11 @@ usage: /profiler [-h] [command]
   judge <nick>     judge someone already here as if they just joined,
                    without recording it (they get a CTCP VERSION, as on a join)
   suspects         quarantined sightings waiting for a look
-  query <field> <pattern> [page]
+  query <field> <pattern> [page] [-v]
                    every sighting whose field matches a glob (* and ?), newest
                    first, e.g. query version '*HexChat 2.16.2*'. Shows 25 per
-                   page and the total; add a page number for the rest. Fields:
+                   page and the total; add a page number for the rest, or -v
+                   (--verbose) for every stored field of each one. Fields:
                    nick, host, ip, ident, realname, server, version, channel,
                    proxy, provider, ports, banners
   accept <nick>    let a nick's quarantined sightings count

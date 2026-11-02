@@ -20,7 +20,7 @@ editing.
 
 Commands: `/profiler list`, `/profiler reload`, `/profiler show <nick>`,
 `/profiler nicks <nick>`, `/profiler judge <nick>`, `/profiler suspects`,
-`/profiler query <field> <pattern> [page]`,
+`/profiler query <field> <pattern> [page] [-v]`,
 `/profiler accept <nick>`, `/profiler reject <nick>`, `/profiler good <nick>`,
 `/profiler neutral <nick>`, `/profiler bad <nick>`,
 `/profiler unlabel <nick>`. `/profiler -h` says
@@ -44,7 +44,11 @@ spaces; a surrounding pair of quotes is dropped. It prints 25 sightings a
 page and says the total and how many pages, so a pattern that matches
 thousands won't flood the window. Add a page number to see the rest, like
 `/profiler query version '*HexChat 2.16.2*' 2`. Without quotes a trailing
-number is read as the page, so quote a pattern that ends in one.
+number is read as the page, so quote a pattern that ends in one. Add `-v`
+(or `--verbose`), anywhere in the command, to print a second line under each
+sighting with the rest of its stored fields: realname, client version,
+server, ip, proxy, provider, open ports, banners, the verdict it got, and
+whether it was quarantined.
 
 ## Starting from your logs
 
