@@ -382,31 +382,58 @@ subtest 'searching sightings by a field with a glob' => sub {
     $store->record('efnet', { %obs, nick => 'dot', version => undef }, 4000, 'unknown');
     $store->flush;
 
-    my ($total, @found) = reopened($dir)->search('efnet', 'version', '*HexChat 2.16.2*', 100);
+    my $one = sub { [ { field => $_[0], pattern => $_[1] } ] };
+
+    my ($total, @found) = reopened($dir)->search('efnet', $one->('version', '*HexChat 2.16.2*'), 100);
     is($total, 2, 'two versions contain the string');
     is_deeply([ map { $_->{nick} } @found ], [qw(ann bob)], 'newest first, and nothing without the string');
     is($found[0]{sighting}{version}, 'HexChat 2.16.2 / Linux', 'the matched value comes back');
 
-    ($total) = reopened($dir)->search('efnet', 'version', 'hexchat*', 100);
+    ($total) = reopened($dir)->search('efnet', $one->('version', 'hexchat*'), 100);
     is($total, 2, 'matching is case-insensitive');
 
-    ($total) = reopened($dir)->search('efnet', 'version', 'irssi v1.4.5', 100);
+    ($total) = reopened($dir)->search('efnet', $one->('version', 'irssi v1.4.5'), 100);
     is($total, 1, 'no wildcards means an exact match');
 
-    (undef, @found) = reopened($dir)->search('efnet', 'nick', 'a*', 100);
+    (undef, @found) = reopened($dir)->search('efnet', $one->('nick', 'a*'), 100);
     is_deeply([ map { $_->{nick} } @found ], ['ann'], 'can search the nick too');
 
-    ($total, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1, 0);
+    ($total, @found) = reopened($dir)->search('efnet', $one->('version', '*HexChat*'), 1, 0);
     is($total, 2, 'total counts every match');
     is(scalar @found, 1, 'but the rows are capped at the limit');
     is($found[0]{nick}, 'ann', 'first page is the newest');
-    (undef, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1, 1);
+    (undef, @found) = reopened($dir)->search('efnet', $one->('version', '*HexChat*'), 1, 1);
     is_deeply([ map { $_->{nick} } @found ], ['bob'], 'the offset pages past it');
-    (undef, @found) = reopened($dir)->search('efnet', 'version', '*HexChat*', 1, 2);
+    (undef, @found) = reopened($dir)->search('efnet', $one->('version', '*HexChat*'), 1, 2);
     is_deeply(\@found, [], 'past the end is empty');
 
-    eval { reopened($dir)->search('efnet', 'quarantined', '*', 100) };
+    eval { reopened($dir)->search('efnet', $one->('quarantined', '*'), 100) };
     like($@, qr/can't search 'quarantined'/, 'only whitelisted fields are searchable');
+};
+
+subtest 'combining query terms with and / or' => sub {
+    my $dir = tempdir(CLEANUP => 1);
+    my $store = Profiler::Store->new($dir);
+    $store->record('efnet', { %obs, nick => 'presonic', version => 'HexChat 2.16.2' }, 1000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'presonic', version => 'irssi v1.4.5' }, 2000, 'consistent');
+    $store->record('efnet', { %obs, nick => 'bob', version => 'HexChat 2.16.2' }, 3000, 'consistent');
+    $store->flush;
+
+    my ($total, @found) = reopened($dir)->search('efnet',
+        [ { field => 'version', pattern => '*HexChat 2.16.2*' }, { op => 'AND', field => 'nick', pattern => '*presonic*' } ], 100);
+    is($total, 1, 'AND needs both to match');
+    is($found[0]{nick}, 'presonic', 'the one with both');
+
+    ($total) = reopened($dir)->search('efnet',
+        [ { field => 'version', pattern => '*irssi*' }, { op => 'OR', field => 'nick', pattern => 'bob' } ], 100);
+    is($total, 2, 'OR matches either');
+
+    # AND binds tighter than OR, like SQL: version~irssi AND nick~presonic, OR nick~bob.
+    ($total) = reopened($dir)->search('efnet',
+        [ { field => 'version', pattern => '*irssi*' },
+          { op => 'AND', field => 'nick', pattern => '*presonic*' },
+          { op => 'OR', field => 'nick', pattern => 'bob' } ], 100);
+    is($total, 2, 'the irssi/presonic sighting and the bob one');
 };
 
 subtest 'a glob with LIKE specials in it matches them literally' => sub {
@@ -417,9 +444,9 @@ subtest 'a glob with LIKE specials in it matches them literally' => sub {
     $store->record('efnet', { %obs, nick => 'no', version => 'axb client' }, 3000, 'consistent');
     $store->flush;
 
-    my ($total) = reopened($dir)->search('efnet', 'version', '*100%*', 100);
+    my ($total) = reopened($dir)->search('efnet', [ { field => 'version', pattern => '*100%*' } ], 100);
     is($total, 1, 'a literal percent is not a wildcard');
-    ($total) = reopened($dir)->search('efnet', 'version', 'a_b*', 100);
+    ($total) = reopened($dir)->search('efnet', [ { field => 'version', pattern => 'a_b*' } ], 100);
     is($total, 1, 'nor is a literal underscore');
 };
 

@@ -26,6 +26,7 @@ use Profiler::Jupe;
 use Profiler::Label;
 use Profiler::Marks;
 use Profiler::Probe;
+use Profiler::Query;
 use Profiler::Queue;
 use Profiler::Report;
 use Profiler::Rules;
@@ -722,39 +723,36 @@ sub cmd_profiler {
     }
     elsif ($subcmd eq 'query') {
         return info("/profiler query needs an active server") unless $server;
-        # query <field> <pattern> [page] [-v]. The pattern is the rest of the
-        # line (so it can hold spaces), with an optional page number after it. A
-        # surrounding pair of quotes is stripped, as in the common
-        # /profiler query version '*HexChat 2.16.2*'. Without quotes, a trailing
-        # number is taken as the page, so quote a pattern that ends in one. -v
-        # or --verbose, anywhere, prints every stored field of each sighting.
+        # query <field> <pattern> [&& | || <field> <pattern>]... [page] [-v].
+        # Terms are joined with && (and) or || (or); a pattern can be quoted to
+        # hold spaces or a literal operator (see Profiler::Query). -v or
+        # --verbose, anywhere, prints every stored field of each sighting.
         my $verbose = $data =~ s/(?:^|\s)(?:--verbose|-v)(?=\s|$)/ /g ? 1 : 0;
-        my ($field, $rest) = $data =~ /^\s*\S+\s+(\S+)\s+(.*\S)/;
-        return info("usage: /profiler query <field> <pattern> [page] [-v], e.g. /profiler query version '*HexChat 2.16.2*'")
-            unless defined $rest;
-        my ($pattern, $page);
-        if ($rest =~ /^(['"])(.*)\1(?:\s+(\d+))?\s*$/) { ($pattern, $page) = ($2, $3); }
-        elsif ($rest =~ /^(.*\S)\s+(\d+)\s*$/)         { ($pattern, $page) = ($1, $2); }
-        else                                           { $pattern = $rest; }
-        $page = 1 if !$page || $page < 1;
+        (my $expr = $data) =~ s/^\s*\S+\s*//;
+        my ($terms, $page) = Profiler::Query::parse($expr);
+        return info("usage: /profiler query <field> <pattern> [&& <field> <pattern>]... [page] [-v], "
+            . "e.g. /profiler query version '*HexChat 2.16.2*' && nick '*presonic*'")
+            unless $terms;
+        my $desc = Profiler::Query::describe($terms);
 
         my ($total, @found) = eval {
-            $store->search($server->{tag}, lc $field, $pattern, $QUERY_PAGE, ($page - 1) * $QUERY_PAGE)
+            $store->search($server->{tag}, $terms, $QUERY_PAGE, ($page - 1) * $QUERY_PAGE)
         };
         return info($@) if $@;
-        return info("no sightings on $server->{tag} where $field matches '$pattern'") unless $total;
+        return info("no sightings on $server->{tag} where $desc") unless $total;
 
         my $pages = int(($total + $QUERY_PAGE - 1) / $QUERY_PAGE);
-        return info("$total sighting(s) where $field matches '$pattern': only $pages page(s)") if $page > $pages;
+        return info("$total sighting(s) where $desc: only $pages page(s)") if $page > $pages;
         my $first = ($page - 1) * $QUERY_PAGE + 1;
-        info("$total sighting(s) on $server->{tag} where $field matches '$pattern'; showing $first-"
+        info("$total sighting(s) on $server->{tag} where $desc; showing $first-"
             . ($first + $#found) . ", page $page of $pages"
-            . ($pages > 1 ? ". /profiler query <field> <pattern> <page> for more" : ''));
+            . ($pages > 1 ? ". add a page number for more" : ''));
+        my $primary = $terms->[0]{field};
         for my $f (@found) {
             my $s = $f->{sighting};
             info(sprintf('%s  %s in %s as %s@%s; %s: %s', scalar localtime($s->{time}), $f->{nick},
-                $s->{channel} // '?', $s->{ident} // '?', $s->{host} // '?', lc $field, $s->{ lc $field } // '?'));
-            info('    ' . Profiler::Report::query_detail($s, lc $field)) if $verbose;
+                $s->{channel} // '?', $s->{ident} // '?', $s->{host} // '?', $primary, $s->{$primary} // '?'));
+            info('    ' . Profiler::Report::query_detail($s, $primary)) if $verbose;
         }
     }
     elsif ((grep { $subcmd eq $_ } @Profiler::Label::LABELS, 'unlabel') && length $arg) {
@@ -800,13 +798,14 @@ usage: /profiler [-h] [command]
   judge <nick>     judge someone already here as if they just joined,
                    without recording it (they get a CTCP VERSION, as on a join)
   suspects         quarantined sightings waiting for a look
-  query <field> <pattern> [page] [-v]
+  query <field> <pattern> [&& <field> <pattern>]... [page] [-v]
                    every sighting whose field matches a glob (* and ?), newest
-                   first, e.g. query version '*HexChat 2.16.2*'. Shows 25 per
-                   page and the total; add a page number for the rest, or -v
-                   (--verbose) for every stored field of each one. Fields:
-                   nick, host, ip, ident, realname, server, version, channel,
-                   proxy, provider, ports, banners
+                   first, e.g. query version '*HexChat 2.16.2*'. Join terms
+                   with && (and) or || (or). Shows 25 per page and the total;
+                   add a page number for the rest, or -v (--verbose) for every
+                   stored field of each one. Fields: nick, host, ip, ident,
+                   realname, server, version, channel, proxy, provider, ports,
+                   banners
   accept <nick>    let a nick's quarantined sightings count
   reject <nick>    file a nick's quarantined sightings away
   good <nick>      label a nick GOOD, NEUTRAL or BAD; it leads every line
