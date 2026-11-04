@@ -399,6 +399,12 @@ nick.
   for camping nicks (like a jupe bouncer), and anyone who joins from it leads
   with JUPER whatever they score.
 
+  The nick someone is waiting on is found among the nicks they've switched
+  with and their look-alikes, so the JUPER line says which: "while forte, a
+  nick they switch with that fits `'s history, waits" or "a variant that
+  fits". That makes plain the waiter is a known alias of the juped nick, not
+  someone conjured up.
+
 ## Labels
 
 The scoring can't know what the ops have decided about someone, so you can

@@ -560,22 +560,25 @@ sub judge {
         $say->($moved_text, $moved_word);
     }
 
-    check_for_jupe($job, $waiting->{nick}, $now)
+    check_for_jupe($job, $waiting, $now)
         if $waiting && !Profiler::Rules::below_minimum($waiting->{result}, $min);
 }
 
-# $job joined on a variant of $nick and fits $nick's history, so they may be
-# waiting for someone to let go of it. That someone gets a WHOIS and VERSION,
-# like a join, and judge_holder has a look.
+# $job joined on a variant of $waiting->{nick} and fits its history, so they
+# may be waiting for someone to let go of it. That someone gets a WHOIS and
+# VERSION, like a join, and judge_holder has a look. jupe_linked records
+# whether the joiner and the nick are tied by an observed /nick change, for the
+# report.
 sub check_for_jupe {
-    my ($job, $nick, $now) = @_;
+    my ($job, $waiting, $now) = @_;
+    my $nick = $waiting->{nick};
     my $server = Irssi::server_find_tag($job->{tag});
     return unless $server && lc $nick ne lc $server->{nick};
     my $rkey = recent_key($job->{tag}, 'jupe', $nick);
     return if $recent{$rkey} && $now - $recent{$rkey} < Irssi::settings_get_int('profiler_recheck');
     $recent{$rkey} = $now;
     queue_for($job->{tag})->add($rkey, { tag => $job->{tag}, channel => $job->{channel}, nick => $nick,
-        jupe_of => $job->{nick} }, $now);
+        jupe_of => $job->{nick}, jupe_linked => $waiting->{linked} }, $now);
 }
 
 # Whoever holds a nick that someone is waiting for (see check_for_jupe).
@@ -592,7 +595,7 @@ sub judge_holder {
         1;
     } or return info($@);
     return unless $r;
-    my ($word, $text) = Profiler::Report::juper_line($job, $r, $job->{jupe_of});
+    my ($word, $text) = Profiler::Report::juper_line($job, $r, $job->{jupe_of}, $job->{jupe_linked});
     say_in($job->{tag}, $job->{channel}, $text, $word);
 }
 

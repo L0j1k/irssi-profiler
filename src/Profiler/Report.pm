@@ -200,14 +200,18 @@ sub moved_line {
 }
 
 # The line for catching someone juping a nick (see Profiler::Jupe): $job is
-# whoever holds it, $r what Profiler::Jupe::juper said, and $waiting the
-# variant its owner is waiting on.
+# whoever holds it, $r what Profiler::Jupe::juper said, $waiting the other nick
+# its owner is on and waiting from, and $linked whether that nick is tied to
+# this one by an observed /nick change (otherwise it's just a look-alike
+# variant). Saying which makes it plain the owner was found on a linked nick,
+# not conjured.
 sub juper_line {
-    my ($job, $r, $waiting) = @_;
+    my ($job, $r, $waiting, $linked) = @_;
     my $differs = what_differs($r, qw(ident realname version));
-    return ('JUPER', sprintf("%s (%s@%s, client: %s) is sitting on %s's nick while %s, who fits %s's history, waits: "
-        . '%s; match %+.2f against %s. Remembered as a juper', $job->{nick}, $job->{ident}, $job->{host},
-        $job->{version}, $job->{nick}, $waiting, $job->{nick}, $differs, $r->{match}, $job->{nick}));
+    my $rel = $linked ? 'a nick they switch with' : 'a variant';
+    return ('JUPER', sprintf("%s (%s@%s, client: %s) is sitting on %s's nick while %s, %s that fits %s's history, "
+        . 'waits: %s; match %+.2f against %s. Remembered as a juper', $job->{nick}, $job->{ident}, $job->{host},
+        $job->{version}, $job->{nick}, $waiting, $rel, $job->{nick}, $differs, $r->{match}, $job->{nick}));
 }
 
 # "ident, client match" for the attributes that scored in favour, or undef

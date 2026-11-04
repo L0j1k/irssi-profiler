@@ -137,11 +137,15 @@ subtest 'someone who looks like a kicked or banned person' => sub {
 
 subtest 'someone sitting on the nick its owner is waiting for' => sub {
     my $r = { match => -0.7, parts => { host => -1, ident => -1, version => 0.5 } };
-    my ($word, $text) = Profiler::Report::juper_line({ %job, ident => 'lol', host => 'troll.example.org',
-        version => 'mIRC v7.77' }, $r, 'bob_');
+    my $holder = { %job, ident => 'lol', host => 'troll.example.org', version => 'mIRC v7.77' };
+    my ($word, $text) = Profiler::Report::juper_line($holder, $r, 'bob_', 0);
     is($word, 'JUPER', 'gets its own word');
-    is($text, "bob (lol\@troll.example.org, client: mIRC v7.77) is sitting on bob's nick while bob_, who fits "
-        . "bob's history, waits: ident doesn't match; match -0.70 against bob. Remembered as a juper", $text);
+    is($text, "bob (lol\@troll.example.org, client: mIRC v7.77) is sitting on bob's nick while bob_, a variant "
+        . "that fits bob's history, waits: ident doesn't match; match -0.70 against bob. Remembered as a juper", $text);
+
+    (undef, $text) = Profiler::Report::juper_line($holder, $r, 'bob_', 1);
+    like($text, qr/while bob_, a nick they switch with that fits bob's history, waits/,
+        'a linked nick says they switch nicks, so the waiter is plainly a known alias');
 };
 
 subtest 'a move says which held joins now count' => sub {
