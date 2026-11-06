@@ -433,9 +433,11 @@ Labels are kept by a rescore, but not by importing the logs again.
 
 ## Output
 
-Lines are drawn in your theme's `{channick}` colour, the one irssi uses for
-a nick that parts or quits (dark cyan by default). Every line about
-someone starts with a one-word summary in its own colour:
+The `profiler:` tag is drawn in your theme's `{channick}` colour, the one
+irssi uses for a nick that parts or quits (dark cyan by default). Every line
+about someone then leads with a one-word summary in its own colour, the
+subject nick in a flat grey so it stands out, and the rest of the line in a
+darker grey:
 
 | word      | colour        | means |
 |-----------|---------------|-------|
@@ -462,12 +464,14 @@ probably their own server, so it's treated like any other host. A new
 address from a provider they've used before, like another exit of their VPN,
 isn't flagged either, but the line still says it's a likely proxy, adding "a
 provider they've used before". To change a colour, override the format in your theme, for
-example:
+example (here the nick is a flat grey `%w` and the rest a dark grey `%K` —
+swap either for your own colour):
 
-    "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n {channick $0}"; };
+    "perl/profiler" = { profiler_suspect = "{channick profiler:} %MSUSPECT%n %w$0%n %K$1%n"; };
 
 The formats are `profiler_line` for status messages and `profiler_<word>`
-(lowercase, `_` for the space) for the rest. A variant's word is
+(lowercase, `_` for the space) for the rest. `$0` is the subject nick and
+`$1` the rest of the line, split out so each can be coloured on its own. A variant's word is
 `variant_consistent` or `variant_mixed`, and a line with two words uses
 both, as in `profiler_unknown_variant_consistent`. A label (see Labels) goes
 in front, as in `profiler_bad_evader`.

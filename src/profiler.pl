@@ -127,13 +127,17 @@ sub coloured {
 my %ONE_WORD = (%WORD_COLOUR, %VARIANT_COLOUR, %LABEL_COLOUR);
 my @words = ((map { [$_] } sort keys %WORD_COLOUR, sort keys %VARIANT_COLOUR),
     map { my $word = $_; map { [ $word, $_ ] } sort keys %VARIANT_COLOUR } sort keys %WORD_COLOUR);
+# $0 is the subject nick, in a flat neutral grey so it's easy to pick out next
+# to the coloured verdict word, and $1 is the rest of the line in a darker grey.
+# say_in splits the text into the two.
+my $LINE = ' %w$0%n %K$1%n';
 Irssi::theme_register([
-    profiler_line => '{channick profiler:} %K$0%n',
+    profiler_line => '{channick profiler:}' . $LINE,
     map {
         my $words = $_;
         map {
             my @lead = (@$_, @$words);
-            word_format(@lead) => '{channick profiler:} ' . join(' ', map { coloured($_, $ONE_WORD{$_}) } @lead) . ' %K$0%n'
+            word_format(@lead) => '{channick profiler:} ' . join(' ', map { coloured($_, $ONE_WORD{$_}) } @lead) . $LINE
         } [], map { [$_] } sort keys %LABEL_COLOUR
     } @words,
 ]);
@@ -145,9 +149,12 @@ Irssi::theme_register([
 sub say_in {
     my ($tag, $channel, $text, @words) = @_;
     my $format = @words ? word_format(@words) : 'profiler_line';
+    # Every line leads with the subject nick, so split it off for the theme to
+    # colour on its own ($0), with the rest of the line as $1.
+    my ($nick, $rest) = $text =~ /^(\S*)\s*(.*)$/s;
     my $server = defined $tag ? Irssi::server_find_tag($tag) : undef;
-    return $server->printformat($channel, MSGLEVEL_CLIENTCRAP, $format, $text) if $server && defined $channel;
-    Irssi::printformat(MSGLEVEL_CLIENTCRAP, $format, $text);
+    return $server->printformat($channel, MSGLEVEL_CLIENTCRAP, $format, $nick, $rest) if $server && defined $channel;
+    Irssi::printformat(MSGLEVEL_CLIENTCRAP, $format, $nick, $rest);
 }
 
 sub info {
